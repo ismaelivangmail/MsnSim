@@ -17,6 +17,7 @@
     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <!-- Genera .apk (no .aab) también en Release -->
     <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <RuntimeIdentifiers>android-arm;android-arm64</RuntimeIdentifiers>
     <!-- sqlite-net usa reflexión: no recortar el ensamblado de la app -->
     <TrimMode>partial</TrimMode>
     <!-- Avisos de APIs marcadas obsoletas en MAUI 10 (DisplayAlert, TranslateTo...) -->
