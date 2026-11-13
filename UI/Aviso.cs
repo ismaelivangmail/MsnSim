@@ -14,6 +14,7 @@ public class Aviso : Border
         LineBreakMode = LineBreakMode.TailTruncation,
         VerticalOptions = LayoutOptions.Center
     };
+    readonly ContentView _icono = new() { VerticalOptions = LayoutOptions.Center };
     CancellationTokenSource? _cts;
 
     public string? Email { get; private set; }
@@ -26,7 +27,7 @@ public class Aviso : Border
             ColumnSpacing = 10,
             ColumnDefinitions = { new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star) }
         };
-        g.Add(new Label { Text = "💬", FontSize = 24, VerticalOptions = LayoutOptions.Center }, 0, 0);
+        g.Add(_icono, 0, 0);
         g.Add(_texto, 1, 0);
 
         Content = g;
@@ -49,8 +50,9 @@ public class Aviso : Border
         });
     }
 
-    public async void Mostrar(string texto, string? email)
+    public async void Mostrar(string texto, string? email, View? icono = null)
     {
+        _icono.Content = icono ?? new Label { Text = "💬", FontSize = 24 };
         _texto.Text = texto;
         Email = email;
         _cts?.Cancel();
