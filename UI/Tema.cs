@@ -126,6 +126,31 @@ public static class Tema
         catch { /* sin vibrador o sin permiso */ }
     }
 
+    public static Label Etiqueta(string texto) =>
+        new() { Text = texto, FontSize = 13, TextColor = Texto, Margin = new Thickness(0, 6, 0, 0) };
+
+    public static Border Caja(View contenido) => new()
+    {
+        Content = contenido,
+        Padding = new Thickness(8, 0),
+        StrokeShape = new RoundRectangle { CornerRadius = 6 },
+        Stroke = new SolidColorBrush(Borde),
+        BackgroundColor = Colors.White
+    };
+
+    public static Button BotonPrincipal(string texto) => new()
+    {
+        Text = texto, BackgroundColor = Azul, TextColor = Colors.White,
+        FontAttributes = FontAttributes.Bold, CornerRadius = 6, HeightRequest = 46,
+        Margin = new Thickness(0, 8, 0, 0)
+    };
+
+    public static Button BotonEnlace(string texto) => new()
+    {
+        Text = texto, BackgroundColor = Colors.Transparent, TextColor = Azul,
+        FontSize = 14, BorderWidth = 0, HeightRequest = 40
+    };
+
     public static void AlTocar(View v, Func<Task> accion)
     {
         var tap = new TapGestureRecognizer();
