@@ -20,7 +20,7 @@ public sealed record RespuestaApi(bool Ok, string? Error, JsonElement Datos)
 public static class ApiCuentas
 {
     // ⚠️ Cambia esto por la dirección real de tu hosting (con https).
-    public const string Url = "http://gn3nominas.ddns.net/api.php";
+    public const string Url = "http://gn3nomina.ddns.net/api.php";
 
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
 

@@ -46,3 +46,17 @@ adb install -r bin/Release/net10.0-android/publish/com.ivanovsky.msnsim-Signed.a
 ## Siguiente paso
 Sustituir `Simulador` por `MsnClient.Core` (ya validado contra Escargot)
 manteniendo los mismos eventos: PresenciaCambio, MensajeRecibido, Escribiendo.
+
+## Abrir Puertos en Modem
+
+Aplicaciones>Reenvío de puertos
+
+Nombre de la Aplicación: no mover default valores de usuario
+Puerto WAN 80~80
+Puerto LAN 80~80
+
+Cliente Interno DESKTOP-SD4LIOH
+Protocolo TCP
+Habilitar Asociación - Mapeo
+
+
