@@ -17,6 +17,9 @@ public class ChatPage : ContentPage
     readonly ToolbarItem _itemBloquear;
     readonly Aviso _aviso = new();
     readonly Grid _cuerpo;
+    readonly Border _panelEmojis;
+    readonly Button _btnEmoji;
+    VerticalStackLayout? _grupo;          // bloque de mensajes seguidos del mismo remitente
     string? _ultimoRemitente;
     bool _cargado;
     DateTime _ultimoZumbido = DateTime.MinValue;
@@ -54,7 +57,7 @@ public class ChatPage : ContentPage
         encabezado.Add(new Label { Text = "Para:", FontSize = 13, TextColor = Tema.Gris, VerticalOptions = LayoutOptions.Center }, 0, 0);
         encabezado.Add(_encPunto, 1, 0);
         encabezado.Add(new VerticalStackLayout { VerticalOptions = LayoutOptions.Center, Children = { _encNombre, _encDetalle } }, 2, 0);
-        encabezado.Add(Tema.Avatar(c.Nombre, c.Email, 40), 3, 0);
+        encabezado.Add(Tema.Avatar(c.Nombre, c.Email, 40, c.Avatar), 3, 0);
 
         _scroll = new ScrollView { Content = _mensajes };
         _escribiendo = new Label { FontSize = 12, FontAttributes = FontAttributes.Italic, TextColor = Tema.Gris, Padding = new Thickness(14, 2), IsVisible = false };
@@ -62,6 +65,7 @@ public class ChatPage : ContentPage
         // Barra de escritura
         _entrada = new Entry { Placeholder = "Escribe un mensaje...", Keyboard = Keyboard.Chat, ReturnType = ReturnType.Send, FontSize = 15 };
         _entrada.Completed += async (_, _) => await EnviarAsync();
+        _entrada.Focused += (_, _) => MostrarEmojis(false);
         var enviar = new Button
         {
             Text = "Enviar", BackgroundColor = Tema.Azul, TextColor = Colors.White,
@@ -87,17 +91,20 @@ public class ChatPage : ContentPage
                 new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto)
             }
         };
-        barra.Add(BotonIcono("🙂", ElegirEmoticonAsync), 0, 0);
+        _btnEmoji = BotonIcono("🙂", AlternarEmojisAsync);
+        barra.Add(_btnEmoji, 0, 0);
         barra.Add(BotonIcono("📳", EnviarZumbidoAsync), 1, 0);
         barra.Add(marco, 2, 0);
         barra.Add(enviar, 3, 0);
 
+        _panelEmojis = CrearPanelEmojis();
         _cuerpo = new Grid
         {
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Star),
-                new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto)
+                new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto)
             }
         };
         _cuerpo.Add(encabezado, 0, 0);
@@ -105,6 +112,7 @@ public class ChatPage : ContentPage
         _cuerpo.Add(_aviso, 0, 1);
         _cuerpo.Add(_escribiendo, 0, 2);
         _cuerpo.Add(barra, 0, 3);
+        _cuerpo.Add(_panelEmojis, 0, 4);
         Content = _cuerpo;
 
         _aviso.Tocado += CambiarDeChatAsync;
@@ -130,7 +138,7 @@ public class ChatPage : ContentPage
         _encNombre.Text = Tema.Emoticones(_c.Nombre);
         var estado = _c.Bloqueado ? "Bloqueado" : Tema.NombreEstado(_c.Estado);
         var personal = string.IsNullOrWhiteSpace(_c.MensajePersonal) ? "" : $"  –  {Tema.Emoticones(_c.MensajePersonal)}";
-        _encDetalle.Text = $"<{_c.Email}> ({estado}){personal}";
+        _encDetalle.Text = estado + personal;
         _itemBloquear.Text = _c.Bloqueado ? "Desbloquear" : "Bloquear";
     }
 
@@ -188,7 +196,8 @@ public class ChatPage : ContentPage
             var nombre = Tema.Emoticones(c.Nombre);
             _aviso.Mostrar(m.EsZumbido
                 ? $"{nombre}\nte ha enviado un zumbido."
-                : $"{nombre} dice:\n{Tema.Emoticones(m.Texto)}", c.Email);
+                : $"{nombre} dice:\n{Tema.Emoticones(m.Texto)}", c.Email,
+                Tema.Avatar(c.Nombre, c.Email, 40, c.Avatar));
             return;
         }
         _escribiendo.IsVisible = false;
@@ -215,26 +224,49 @@ public class ChatPage : ContentPage
         }
 
         var clave = m.Enviado ? "yo" : _c.Email;
-        if (_ultimoRemitente != clave)
-        {
-            var remitente = m.Enviado ? Servicios.Usuario?.Nombre ?? "Yo" : _c.Nombre;
-            var hora = m.Fecha.Date == DateTime.Today ? m.Fecha.ToString("HH:mm") : m.Fecha.ToString("dd/MM HH:mm");
-            _mensajes.Children.Add(new Label
-            {
-                Text = $"{Tema.Emoticones(remitente)} dice ({hora}):",
-                FontSize = 12,
-                TextColor = Tema.Gris,
-                Margin = new Thickness(0, 8, 0, 0)
-            });
-            _ultimoRemitente = clave;
-        }
-        _mensajes.Children.Add(new Label
+        if (_grupo is null || _ultimoRemitente != clave)
+            NuevoGrupo(m);
+        _grupo!.Children.Add(new Label
         {
             Text = Tema.Emoticones(m.Texto),
             FontSize = 15,
-            TextColor = m.Enviado ? Tema.Texto : Tema.ColorDe(_c.Email),
-            Margin = new Thickness(12, 0, 0, 0)
+            TextColor = m.Enviado ? Tema.Texto : Tema.ColorDe(_c.Email)
         });
+    }
+
+    /// <summary>
+    /// Cabecera "X dice (hora):" y, para los mensajes recibidos, el avatar de quien escribe
+    /// a la izquierda de todo el bloque.
+    /// </summary>
+    void NuevoGrupo(Mensaje m)
+    {
+        var u = Servicios.Usuario;
+        var remitente = m.Enviado ? u?.Nombre ?? "Yo" : _c.Nombre;
+        var hora = m.Fecha.Date == DateTime.Today ? m.Fecha.ToString("HH:mm") : m.Fecha.ToString("dd/MM HH:mm");
+
+        _grupo = new VerticalStackLayout { Spacing = 2 };
+        _grupo.Children.Add(new Label
+        {
+            Text = $"{Tema.Emoticones(remitente)} dice ({hora}):",
+            FontSize = 12,
+            TextColor = Tema.Gris
+        });
+
+        var fila = new Grid
+        {
+            ColumnSpacing = 10,
+            Margin = new Thickness(0, 10, 0, 0),
+            ColumnDefinitions = { new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star) }
+        };
+        View avatar = m.Enviado
+            ? new BoxView { WidthRequest = 36, Color = Colors.Transparent }   // mantiene la alineación
+            : Tema.Avatar(_c.Nombre, _c.Email, 36, _c.Avatar);
+        avatar.VerticalOptions = LayoutOptions.Start;
+        fila.Add(avatar, 0, 0);
+        fila.Add(_grupo, 1, 0);
+
+        _mensajes.Children.Add(fila);
+        _ultimoRemitente = m.Enviado ? "yo" : _c.Email;
     }
 
     void Sistema(string texto)
@@ -247,6 +279,7 @@ public class ChatPage : ContentPage
             TextColor = Tema.Gris,
             Margin = new Thickness(0, 8, 0, 0)
         });
+        _grupo = null;
         _ultimoRemitente = null;
     }
 
@@ -339,13 +372,80 @@ public class ChatPage : ContentPage
         _ = Servicios.Sim.ZumbidoEnviadoAsync(_c);
     }
 
-    async Task ElegirEmoticonAsync()
+    // ---------- Panel de emojis ----------
+
+    Border CrearPanelEmojis()
     {
-        var r = await DisplayActionSheet("Emoticonos", "Cancelar", null, Tema.MenuEmoticones());
-        var codigo = Tema.CodigoDeOpcion(r);
-        if (codigo is null) return;
-        _entrada.Text = (_entrada.Text ?? "") + codigo;
-        _entrada.Focus();
+        const int columnas = 7;
+        var grid = new Grid { RowSpacing = 4, ColumnSpacing = 4 };
+        for (int i = 0; i < columnas; i++) grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+
+        var celdas = Tema.EmojisPanel().Append("⌫").ToArray();
+        for (int i = 0; i < celdas.Length; i++)
+        {
+            if (i % columnas == 0) grid.RowDefinitions.Add(new RowDefinition(new GridLength(46)));
+            var texto = celdas[i];
+            var celda = new Label
+            {
+                Text = texto,
+                FontSize = texto == "⌫" ? 22 : 26,
+                TextColor = Tema.Texto,
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalTextAlignment = TextAlignment.Center
+            };
+            Tema.AlTocar(celda, () =>
+            {
+                if (texto == "⌫") BorrarUltimo(); else InsertarEmoji(texto);
+                return Task.CompletedTask;
+            });
+            grid.Add(celda, i % columnas, i / columnas);
+        }
+
+        return new Border
+        {
+            Content = grid,
+            Padding = new Thickness(8, 6, 8, 10),
+            StrokeThickness = 0,
+            BackgroundColor = Color.FromArgb("#F3F7FC"),
+            IsVisible = false
+        };
+    }
+
+    void MostrarEmojis(bool mostrar)
+    {
+        _panelEmojis.IsVisible = mostrar;
+        _btnEmoji.Text = mostrar ? "⌨️" : "🙂";
+    }
+
+    async Task AlternarEmojisAsync()
+    {
+        if (_panelEmojis.IsVisible)
+        {
+            MostrarEmojis(false);
+            _entrada.Focus();   // vuelve el teclado, como en WhatsApp
+            return;
+        }
+        try { await _entrada.HideSoftInputAsync(CancellationToken.None); } catch { }
+        _entrada.Unfocus();
+        MostrarEmojis(true);
+        await BajarAsync(false);
+    }
+
+    void InsertarEmoji(string emoji)
+    {
+        var t = _entrada.Text ?? "";
+        int pos = Math.Clamp(_entrada.CursorPosition, 0, t.Length);
+        _entrada.Text = t.Insert(pos, emoji);
+        _entrada.CursorPosition = pos + emoji.Length;
+    }
+
+    void BorrarUltimo()
+    {
+        var t = _entrada.Text ?? "";
+        if (t.Length == 0) return;
+        var info = new System.Globalization.StringInfo(t);   // un emoji puede ocupar varios caracteres
+        _entrada.Text = info.SubstringByTextElements(0, info.LengthInTextElements - 1);
+        _entrada.CursorPosition = _entrada.Text.Length;
     }
 
     async Task AlternarBloqueoAsync()
@@ -368,6 +468,7 @@ public class ChatPage : ContentPage
             return;
         await Servicios.Db.BorrarHistorialAsync(u.Email, _c.Email);
         _mensajes.Children.Clear();
+        _grupo = null;
         _ultimoRemitente = null;
         Sistema("Se borró el historial de esta conversación.");
     }

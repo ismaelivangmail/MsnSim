@@ -67,10 +67,27 @@ public static class Tema
         return Color.FromArgb(Paleta[(h & 0x7fffffff) % Paleta.Length]);
     }
 
-    public static View Avatar(string nombre, string clave, double tam)
+    /// <summary>Foto de perfil si existe el archivo; si no, la inicial sobre un color.</summary>
+    public static View Avatar(string nombre, string clave, double tam, string? rutaFoto = null)
     {
-        var letras = nombre.Where(char.IsLetterOrDigit).ToArray();
-        var inicial = letras.Length > 0 ? char.ToUpperInvariant(letras[0]).ToString() : "?";
+        View contenido;
+        if (!string.IsNullOrEmpty(rutaFoto) && File.Exists(rutaFoto))
+        {
+            contenido = new Image { Source = ImageSource.FromFile(rutaFoto), Aspect = Aspect.AspectFill };
+        }
+        else
+        {
+            var letras = nombre.Where(char.IsLetterOrDigit).ToArray();
+            contenido = new Label
+            {
+                Text = letras.Length > 0 ? char.ToUpperInvariant(letras[0]).ToString() : "?",
+                TextColor = Colors.White,
+                FontSize = tam * 0.45,
+                FontAttributes = FontAttributes.Bold,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center
+            };
+        }
         return new Border
         {
             WidthRequest = tam,
@@ -80,15 +97,23 @@ public static class Tema
             StrokeThickness = 2,
             Background = new SolidColorBrush(ColorDe(clave)),
             VerticalOptions = LayoutOptions.Center,
-            Content = new Label
-            {
-                Text = inicial,
-                TextColor = Colors.White,
-                FontSize = tam * 0.45,
-                FontAttributes = FontAttributes.Bold,
-                HorizontalOptions = LayoutOptions.Center,
-                VerticalOptions = LayoutOptions.Center
-            }
+            Content = contenido
+        };
+    }
+
+    /// <summary>Avatar con el punto de estado en la esquina inferior derecha.</summary>
+    public static View AvatarConEstado(string nombre, string clave, double tam, Estado estado, string? rutaFoto = null)
+    {
+        var punto = Punto(estado, Math.Max(10, tam * 0.3));
+        punto.HorizontalOptions = LayoutOptions.End;
+        punto.VerticalOptions = LayoutOptions.End;
+        punto.Margin = new Thickness(0, 0, -2, -2);
+        return new Grid
+        {
+            WidthRequest = tam,
+            HeightRequest = tam,
+            VerticalOptions = LayoutOptions.Center,
+            Children = { Avatar(nombre, clave, tam, rutaFoto), punto }
         };
     }
 
@@ -110,11 +135,8 @@ public static class Tema
         return texto;
     }
 
-    public static string[] MenuEmoticones() =>
-        Emotes.Where(e => !e.Codigo.Contains('-')).Select(e => $"{e.Emoji}   {e.Codigo}").ToArray();
-
-    public static string? CodigoDeOpcion(string? opcion) =>
-        Emotes.FirstOrDefault(e => opcion == $"{e.Emoji}   {e.Codigo}").Codigo;
+    /// <summary>Los mismos emoticonos, sin repetir, para el panel de emojis.</summary>
+    public static string[] EmojisPanel() => Emotes.Select(e => e.Emoji).Distinct().ToArray();
 
     public static void Vibrar(int ms)
     {

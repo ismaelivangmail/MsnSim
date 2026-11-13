@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TEMPORAL: permite HTTP sin cifrar SOLO hacia el servidor de pruebas.
+     Quitar cuando el servidor tenga HTTPS. -->
+<network-security-config>
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="false">gn3nomina.ddns.net</domain>
+  </domain-config>
+</network-security-config>

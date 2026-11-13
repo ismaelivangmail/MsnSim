@@ -24,6 +24,9 @@ public class Usuario
     public string MensajePersonal { get; set; } = "";
     public Estado Estado { get; set; } = Estado.Disponible;
     public DateTime UltimoAcceso { get; set; }
+    public string? Token { get; set; }          // sesión del servidor (null = cuenta sólo local)
+    public string? Avatar { get; set; }         // ruta del archivo en el teléfono
+    public string? AvatarRemoto { get; set; }   // ruta en el servidor, p. ej. avatares/3fa9.jpg
 }
 
 [Table("contactos")]
@@ -36,6 +39,7 @@ public class Contacto
     public string MensajePersonal { get; set; } = "";
     public Estado Estado { get; set; } = Estado.Desconectado;
     public bool Bloqueado { get; set; }
+    public string? Avatar { get; set; }         // ruta local; null = inicial de color
 }
 
 [Table("mensajes")]

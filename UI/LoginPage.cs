@@ -189,22 +189,45 @@ public class LoginPage : ContentPage
         _cargando.IsVisible = true;
         await Task.Delay(700); // la espera clásica del login
 
-        // 1) Cuenta guardada en el teléfono (la de prueba o una que ya entró antes).
-        var u = await Servicios.Db.ValidarAsync(email, pwd);
+        Usuario? u = null;
         string? error = null;
 
-        // 2) Si no, se valida contra el servidor y se guarda una copia local.
-        if (u is null && email != Database.UsuarioDemo)
+        if (email == Database.UsuarioDemo)
         {
+            // Cuenta de prueba: sólo existe en el teléfono.
+            u = await Servicios.Db.ValidarAsync(email, pwd);
+        }
+        else
+        {
+            // 1) El servidor manda: valida la contraseña y entrega una sesión nueva.
             var r = await ApiCuentas.IniciarSesionAsync(email, pwd);
             if (r.Ok)
+            {
                 u = await Servicios.Db.GuardarCuentaRemotaAsync(
                     email,
                     r.TextoUsuario("nombre") ?? email.Split('@')[0],
                     r.TextoUsuario("mensaje_personal") ?? "",
-                    pwd);
+                    pwd,
+                    r.Texto("sesion"),
+                    r.TextoUsuario("avatar"));
+
+                if (u.AvatarRemoto is { } remoto && !Avatares.Existe(u.Avatar))
+                {
+                    u.Avatar = await Avatares.DescargarAsync(remoto, u.Avatar);
+                    await Servicios.Db.GuardarUsuarioAsync(u);
+                }
+            }
+            else if (r.SinConexion)
+            {
+                // 2) Sin internet: se permite entrar con la copia guardada en el teléfono.
+                // Si quedó una sesión guardada se conserva, para sincronizar cuando vuelva la conexión.
+                u = await Servicios.Db.ValidarAsync(email, pwd);
+                if (u is null) error = r.Error;
+            }
             else
+            {
                 error = r.Error;
+            }
         }
 
         if (u is null)

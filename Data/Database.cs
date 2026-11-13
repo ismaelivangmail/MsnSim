@@ -79,7 +79,8 @@ public sealed class Database
     /// Guarda en el teléfono una cuenta validada por el servidor. La contraseña se guarda
     /// con hash para poder entrar también sin internet.
     /// </summary>
-    public async Task<Usuario> GuardarCuentaRemotaAsync(string email, string nombre, string mensajePersonal, string password)
+    public async Task<Usuario> GuardarCuentaRemotaAsync(string email, string nombre, string mensajePersonal,
+        string password, string? token, string? avatarRemoto)
     {
         await InitAsync();
         var u = await _db.FindAsync<Usuario>(email) ?? new Usuario { Email = email, Estado = Estado.Disponible };
@@ -87,6 +88,14 @@ public sealed class Database
         u.PasswordHash = Hash(password, u.Salt);
         u.Nombre = nombre;
         u.MensajePersonal = mensajePersonal;
+        u.Token = token;
+        if (u.AvatarRemoto != avatarRemoto)
+        {
+            // La foto cambió en el servidor: se descargará de nuevo.
+            Services.Avatares.BorrarLocal(u.Avatar);
+            u.Avatar = null;
+            u.AvatarRemoto = avatarRemoto;
+        }
         await _db.InsertOrReplaceAsync(u);
 
         if ((await ContactosAsync(email)).Count == 0)

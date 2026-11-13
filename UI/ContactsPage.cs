@@ -29,11 +29,11 @@ public class ContactsPage : ContentPage
         ToolbarItems.Add(agregar);
         ToolbarItems.Add(salir);
 
-        Tema.AlTocar(_nombre, CambiarNombreAsync);
+        Tema.AlTocar(_nombre, AbrirPerfilAsync);
+        Tema.AlTocar(_avatar, AbrirPerfilAsync);
+        Tema.AlTocar(_personal, AbrirPerfilAsync);
         Tema.AlTocar(_estado, CambiarEstadoAsync);
         Tema.AlTocar(_punto, CambiarEstadoAsync);
-        Tema.AlTocar(_avatar, CambiarEstadoAsync);
-        Tema.AlTocar(_personal, CambiarMensajeAsync);
 
         var info = new VerticalStackLayout
         {
@@ -96,7 +96,8 @@ public class ContactsPage : ContentPage
     {
         _ = RecargarAsync();
         if (EstoyEnPantalla && !Simulador.EstaEnLinea(anterior) && Simulador.EstaEnLinea(c))
-            _aviso.Mostrar($"{Tema.Emoticones(c.Nombre)}\nacaba de iniciar sesión.", c.Email);
+            _aviso.Mostrar($"{Tema.Emoticones(c.Nombre)}\nacaba de iniciar sesión.", c.Email,
+                Tema.Avatar(c.Nombre, c.Email, 40, c.Avatar));
     }
 
     void OnMensaje(Mensaje m, Contacto c)
@@ -107,7 +108,8 @@ public class ContactsPage : ContentPage
         var nombre = Tema.Emoticones(c.Nombre);
         _aviso.Mostrar(m.EsZumbido
             ? $"{nombre}\nte ha enviado un zumbido."
-            : $"{nombre} dice:\n{Tema.Emoticones(m.Texto)}", c.Email);
+            : $"{nombre} dice:\n{Tema.Emoticones(m.Texto)}", c.Email,
+            Tema.Avatar(c.Nombre, c.Email, 40, c.Avatar));
     }
 
     // ---------- Lista ----------
@@ -123,7 +125,7 @@ public class ContactsPage : ContentPage
         _personal.Text = string.IsNullOrWhiteSpace(u.MensajePersonal)
             ? "<Escribe un mensaje personal>"
             : Tema.Emoticones(u.MensajePersonal);
-        _avatar.Content = Tema.Avatar(u.Nombre, u.Email, 58);
+        _avatar.Content = Tema.Avatar(u.Nombre, u.Email, 58, u.Avatar);
 
         var contactos = await Servicios.Db.ContactosAsync(u.Email);
         var noLeidos = await Servicios.Db.NoLeidosAsync(u.Email);
@@ -207,8 +209,8 @@ public class ContactsPage : ContentPage
 
         var fila = new Grid
         {
-            Padding = new Thickness(18, 8, 14, 8),
-            ColumnSpacing = 10,
+            Padding = new Thickness(14, 6, 14, 6),
+            ColumnSpacing = 12,
             BackgroundColor = Colors.White,
             ColumnDefinitions =
             {
@@ -217,7 +219,7 @@ public class ContactsPage : ContentPage
                 new ColumnDefinition(GridLength.Auto)
             }
         };
-        fila.Add(Tema.Punto(c.Bloqueado ? Estado.Desconectado : c.Estado), 0, 0);
+        fila.Add(Tema.AvatarConEstado(c.Nombre, c.Email, 40, c.Bloqueado ? Estado.Desconectado : c.Estado, c.Avatar), 0, 0);
         fila.Add(textos, 1, 0);
         if (sinLeer > 0)
             fila.Add(new Border
@@ -274,28 +276,12 @@ public class ContactsPage : ContentPage
         await RecargarAsync();
     }
 
-    async Task CambiarNombreAsync()
+    async Task AbrirPerfilAsync()
     {
-        var u = Servicios.Usuario;
-        if (u is null) return;
-        var r = await DisplayPromptAsync("Nombre para mostrar", "Así te verán tus contactos:", "Guardar", "Cancelar",
-            maxLength: 60, initialValue: u.Nombre);
-        if (string.IsNullOrWhiteSpace(r)) return;
-        u.Nombre = r.Trim();
-        await Servicios.Db.GuardarUsuarioAsync(u);
-        await RecargarAsync();
-    }
-
-    async Task CambiarMensajeAsync()
-    {
-        var u = Servicios.Usuario;
-        if (u is null) return;
-        var r = await DisplayPromptAsync("Mensaje personal", "Se mostrará junto a tu nombre:", "Guardar", "Cancelar",
-            maxLength: 120, initialValue: u.MensajePersonal);
-        if (r is null) return;
-        u.MensajePersonal = r.Trim();
-        await Servicios.Db.GuardarUsuarioAsync(u);
-        await RecargarAsync();
+        if (_navegando) return;
+        _navegando = true;
+        try { await Navigation.PushAsync(new PerfilPage()); }
+        finally { _navegando = false; }
     }
 
     async Task AgregarContactoAsync()
@@ -342,6 +328,14 @@ public class ContactsPage : ContentPage
             return;
         Servicios.Sim.PresenciaCambio -= OnPresencia;
         Servicios.Sim.MensajeRecibido -= OnMensaje;
+
+        var u = Servicios.Usuario;
+        if (u?.Token is { } token)
+        {
+            u.Token = null;   // la siguiente vez se pide una sesión nueva
+            await Servicios.Db.GuardarUsuarioAsync(u);
+            _ = ApiCuentas.CerrarSesionAsync(token);   // sin esperar: si no hay internet, vence sola
+        }
         Servicios.CerrarSesion();
         Application.Current!.Windows[0].Page = new LoginPage();
     }
