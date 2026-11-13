@@ -71,6 +71,7 @@ public class LoginPage : ContentPage
                 },
                 _error,
                 entrar,
+                CrearCuentaBoton(),
                 new Label
                 {
                     Text = "Cuenta de prueba: ismaelivan@msn.com, contraseña 123",
@@ -114,6 +115,19 @@ public class LoginPage : ContentPage
                 Children = { cabecera, _formulario, _cargando }
             }
         };
+    }
+
+    Button CrearCuentaBoton()
+    {
+        var b = Tema.BotonEnlace("¿No tienes cuenta? Crear una");
+        b.Clicked += async (_, _) =>
+            await Navigation.PushModalAsync(new RegistroPage(email =>
+            {
+                _email.Text = email;
+                _pwd.Text = "";
+                _pwd.Focus();
+            }));
+        return b;
     }
 
     static Label Etiqueta(string texto) =>
@@ -173,15 +187,32 @@ public class LoginPage : ContentPage
 
         _formulario.IsVisible = false;
         _cargando.IsVisible = true;
-        await Task.Delay(1300); // la espera clásica del login
+        await Task.Delay(700); // la espera clásica del login
 
+        // 1) Cuenta guardada en el teléfono (la de prueba o una que ya entró antes).
         var u = await Servicios.Db.ValidarAsync(email, pwd);
+        string? error = null;
+
+        // 2) Si no, se valida contra el servidor y se guarda una copia local.
+        if (u is null && email != Database.UsuarioDemo)
+        {
+            var r = await ApiCuentas.IniciarSesionAsync(email, pwd);
+            if (r.Ok)
+                u = await Servicios.Db.GuardarCuentaRemotaAsync(
+                    email,
+                    r.TextoUsuario("nombre") ?? email.Split('@')[0],
+                    r.TextoUsuario("mensaje_personal") ?? "",
+                    pwd);
+            else
+                error = r.Error;
+        }
+
         if (u is null)
         {
             _cargando.IsVisible = false;
             _formulario.IsVisible = true;
             _pwd.Text = "";
-            Error("No se pudo iniciar sesión: la dirección de correo o la contraseña no son correctas.");
+            Error(error ?? "No se pudo iniciar sesión: la dirección de correo o la contraseña no son correctas.");
             return;
         }
 

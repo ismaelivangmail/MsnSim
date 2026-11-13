@@ -42,8 +42,14 @@ public sealed class Database
             Estado = Estado.Disponible
         });
 
+        await SembrarContactosAsync(UsuarioDemo);
+    }
+
+    /// <summary>Contactos simulados y un poco de historial para que una cuenta nueva no esté vacía.</summary>
+    async Task SembrarContactosAsync(string propietario)
+    {
         Contacto C(string email, string nombre, string personal, Estado e) =>
-            new() { Propietario = UsuarioDemo, Email = email, Nombre = nombre, MensajePersonal = personal, Estado = e };
+            new() { Propietario = propietario, Email = email, Nombre = nombre, MensajePersonal = personal, Estado = e };
 
         await _db.InsertAllAsync(new[]
         {
@@ -58,7 +64,7 @@ public sealed class Database
 
         var ayer = DateTime.Now.AddDays(-1);
         Mensaje M(string contacto, bool enviado, string texto, int min, bool leido = true) =>
-            new() { Propietario = UsuarioDemo, Contacto = contacto, Enviado = enviado, Texto = texto, Fecha = ayer.AddMinutes(min), Leido = leido };
+            new() { Propietario = propietario, Contacto = contacto, Enviado = enviado, Texto = texto, Fecha = ayer.AddMinutes(min), Leido = leido };
 
         await _db.InsertAllAsync(new[]
         {
@@ -67,6 +73,25 @@ public sealed class Database
             M("estradaespino@msn.com", false, "jaja chido (Y)", 2),
             M("karla_23@hotmail.com", false, "oye pásame la tarea de mate porfa", 30, leido: false),
         });
+    }
+
+    /// <summary>
+    /// Guarda en el teléfono una cuenta validada por el servidor. La contraseña se guarda
+    /// con hash para poder entrar también sin internet.
+    /// </summary>
+    public async Task<Usuario> GuardarCuentaRemotaAsync(string email, string nombre, string mensajePersonal, string password)
+    {
+        await InitAsync();
+        var u = await _db.FindAsync<Usuario>(email) ?? new Usuario { Email = email, Estado = Estado.Disponible };
+        u.Salt = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        u.PasswordHash = Hash(password, u.Salt);
+        u.Nombre = nombre;
+        u.MensajePersonal = mensajePersonal;
+        await _db.InsertOrReplaceAsync(u);
+
+        if ((await ContactosAsync(email)).Count == 0)
+            await SembrarContactosAsync(email);
+        return u;
     }
 
     public static string Hash(string password, string salt) =>
