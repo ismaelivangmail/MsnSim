@@ -17,6 +17,7 @@
     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <!-- Genera .apk (no .aab) también en Release -->
     <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <!-- Incluye ARM de 32 bits (p. ej. Redmi 9A) además de 64 bits -->
     <RuntimeIdentifiers>android-arm;android-arm64</RuntimeIdentifiers>
     <!-- sqlite-net usa reflexión: no recortar el ensamblado de la app -->
     <TrimMode>partial</TrimMode>

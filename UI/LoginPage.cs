@@ -8,6 +8,10 @@ namespace MsnSim.UI;
 public class LoginPage : ContentPage
 {
     const string ClaveRecordado = "email_recordado";
+    public const string ClaveAutomatico = "inicio_automatico";   // correo con el que se entra solo
+
+    readonly bool _intentarAutomatico;
+    readonly CheckBox _automatico;
 
     readonly Entry _email;
     readonly Entry _pwd;
@@ -17,8 +21,9 @@ public class LoginPage : ContentPage
     readonly VerticalStackLayout _formulario;
     readonly VerticalStackLayout _cargando;
 
-    public LoginPage()
+    public LoginPage(bool intentarAutomatico = true)
     {
+        _intentarAutomatico = intentarAutomatico;
         Background = Tema.Degradado("#FFFFFF", "#D9E9FA");
 
         var recordado = Preferences.Default.Get(ClaveRecordado, "");
@@ -27,16 +32,19 @@ public class LoginPage : ContentPage
             Text = recordado.Length > 0 ? recordado : Database.UsuarioDemo,
             Keyboard = Keyboard.Email,
             Placeholder = "nombre@msn.com",
-            FontSize = 15
+            FontSize = Tema.T(15)
         };
-        _pwd = new Entry { IsPassword = true, Placeholder = "Contraseña", FontSize = 15, ReturnType = ReturnType.Go };
+        _pwd = new Entry { IsPassword = true, Placeholder = "Contraseña", FontSize = Tema.T(15), ReturnType = ReturnType.Go };
         _pwd.Completed += async (_, _) => await IniciarSesionAsync();
 
-        _estado = new Picker { Title = "Estado", FontSize = 15 };
+        _estado = new Picker { Title = "Estado", FontSize = Tema.T(15) };
         foreach (var e in Tema.Seleccionables) _estado.Items.Add(Tema.NombreEstado(e));
         _estado.SelectedIndex = 0;
 
         _recordar = new CheckBox { IsChecked = recordado.Length > 0, Color = Tema.Azul };
+        _automatico = new CheckBox { IsChecked = Preferences.Default.Get(ClaveAutomatico, "").Length > 0, Color = Tema.Azul };
+        // Entrar solo implica recordar la dirección.
+        _automatico.CheckedChanged += (_, e) => { if (e.Value) _recordar.IsChecked = true; };
 
         var entrar = new Button
         {
@@ -50,7 +58,7 @@ public class LoginPage : ContentPage
         };
         entrar.Clicked += async (_, _) => await IniciarSesionAsync();
 
-        _error = new Label { TextColor = Color.FromArgb("#C62828"), FontSize = 13, IsVisible = false };
+        _error = new Label { TextColor = Color.FromArgb("#C62828"), FontSize = Tema.T(13), IsVisible = false };
 
         _formulario = new VerticalStackLayout
         {
@@ -66,7 +74,16 @@ public class LoginPage : ContentPage
                     Children =
                     {
                         _recordar,
-                        new Label { Text = "Recordar mi dirección", FontSize = 14, TextColor = Tema.Texto, VerticalOptions = LayoutOptions.Center }
+                        new Label { Text = "Recordar mi dirección", FontSize = Tema.T(14), TextColor = Tema.Texto, VerticalOptions = LayoutOptions.Center }
+                    }
+                },
+                new HorizontalStackLayout
+                {
+                    Spacing = 4,
+                    Children =
+                    {
+                        _automatico,
+                        new Label { Text = "Iniciar sesión automáticamente", FontSize = Tema.T(14), TextColor = Tema.Texto, VerticalOptions = LayoutOptions.Center }
                     }
                 },
                 _error,
@@ -75,7 +92,7 @@ public class LoginPage : ContentPage
                 new Label
                 {
                     Text = "Cuenta de prueba: ismaelivan@msn.com, contraseña 123",
-                    FontSize = 12, TextColor = Tema.Gris,
+                    FontSize = Tema.T(12), TextColor = Tema.Gris,
                     HorizontalTextAlignment = TextAlignment.Center,
                     Margin = new Thickness(0, 12, 0, 0)
                 }
@@ -90,7 +107,7 @@ public class LoginPage : ContentPage
             Children =
             {
                 new ActivityIndicator { IsRunning = true, Color = Tema.Azul, HeightRequest = 40 },
-                new Label { Text = "Iniciando sesión...", FontSize = 15, TextColor = Tema.Gris, HorizontalTextAlignment = TextAlignment.Center }
+                new Label { Text = "Iniciando sesión...", FontSize = Tema.T(15), TextColor = Tema.Gris, HorizontalTextAlignment = TextAlignment.Center }
             }
         };
 
@@ -100,8 +117,8 @@ public class LoginPage : ContentPage
             Children =
             {
                 Logo(),
-                new Label { Text = "MsnSim", FontSize = 30, FontAttributes = FontAttributes.Bold, TextColor = Tema.Azul, HorizontalTextAlignment = TextAlignment.Center },
-                new Label { Text = "Mensajería instantánea en modo simulado", FontSize = 13, TextColor = Tema.Gris, HorizontalTextAlignment = TextAlignment.Center }
+                new Label { Text = "MsnSim", FontSize = Tema.T(30), FontAttributes = FontAttributes.Bold, TextColor = Tema.Azul, HorizontalTextAlignment = TextAlignment.Center },
+                new Label { Text = "Mensajería instantánea · Modo en Desarrollo...", FontSize = Tema.T(13), TextColor = Tema.Gris, HorizontalTextAlignment = TextAlignment.Center }
             }
         };
 
@@ -131,7 +148,7 @@ public class LoginPage : ContentPage
     }
 
     static Label Etiqueta(string texto) =>
-        new() { Text = texto, FontSize = 13, TextColor = Tema.Texto, Margin = new Thickness(0, 6, 0, 0) };
+        new() { Text = texto, FontSize = Tema.T(13), TextColor = Tema.Texto, Margin = new Thickness(0, 6, 0, 0) };
 
     static Border Caja(View contenido) => new()
     {
@@ -161,11 +178,44 @@ public class LoginPage : ContentPage
             TranslationX = -12, TranslationY = 8,
             Content = new Label
             {
-                Text = "• • •", TextColor = Colors.White, FontSize = 16, FontAttributes = FontAttributes.Bold,
+                Text = "• • •", TextColor = Colors.White, FontSize = Tema.T(16), FontAttributes = FontAttributes.Bold,
                 HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center
             }
         };
         return new Grid { WidthRequest = 110, HeightRequest = 86, HorizontalOptions = LayoutOptions.Center, Children = { atras, frente } };
+    }
+
+    bool _automaticoIntentado;
+
+    protected override async void OnAppearing()
+    {
+        base.OnAppearing();
+        if (!_intentarAutomatico || _automaticoIntentado) return;
+        _automaticoIntentado = true;
+
+        var email = Preferences.Default.Get(ClaveAutomatico, "");
+        if (email.Length == 0)
+        {
+            await Actualizaciones.RevisarAlIniciarAsync(this);   // con inicio automático se revisa ya adentro
+            return;
+        }
+
+        _formulario.IsVisible = false;
+        _cargando.IsVisible = true;
+        var u = await Servicios.Db.UsuarioAsync(email);
+
+        // La sesión del servidor es la credencial; si vence, el sincronizador avisa y vuelve aquí.
+        if (u is not null && (email == Database.UsuarioDemo || !string.IsNullOrEmpty(u.Token)))
+        {
+            u.UltimoAcceso = DateTime.Now;
+            await Servicios.Db.GuardarUsuarioAsync(u);
+            Entrar(u);
+            return;
+        }
+
+        Preferences.Default.Remove(ClaveAutomatico);
+        _cargando.IsVisible = false;
+        _formulario.IsVisible = true;
     }
 
     void Error(string texto)
@@ -245,12 +295,18 @@ public class LoginPage : ContentPage
 
         if (_recordar.IsChecked) Preferences.Default.Set(ClaveRecordado, email);
         else Preferences.Default.Remove(ClaveRecordado);
+        // Sólo se puede entrar solo si hay con qué: la cuenta de prueba o una sesión del servidor.
+        if (_automatico.IsChecked && (email == Database.UsuarioDemo || !string.IsNullOrEmpty(u.Token)))
+            Preferences.Default.Set(ClaveAutomatico, email);
+        else
+            Preferences.Default.Remove(ClaveAutomatico);
 
+        Entrar(u);
+    }
+
+    void Entrar(Usuario u)
+    {
         Servicios.IniciarSesion(u);
-        Application.Current!.Windows[0].Page = new NavigationPage(new ContactsPage())
-        {
-            BarBackgroundColor = Tema.Azul,
-            BarTextColor = Colors.White
-        };
+        Application.Current!.Windows[0].Page = ContactsPage.CrearRaiz();
     }
 }

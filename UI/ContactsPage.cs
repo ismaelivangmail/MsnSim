@@ -1,3 +1,4 @@
+using Microsoft.Maui.Storage;
 using Microsoft.Maui.Controls.Shapes;
 using MsnSim.Data;
 using MsnSim.Services;
@@ -8,14 +9,16 @@ public class ContactsPage : ContentPage
 {
     readonly ContentView _avatar = new();
     readonly Ellipse _punto = Tema.Punto(Estado.Disponible, 11);
-    readonly Label _nombre = new() { TextColor = Colors.White, FontSize = 18, FontAttributes = FontAttributes.Bold, LineBreakMode = LineBreakMode.TailTruncation };
-    readonly Label _estado = new() { TextColor = Colors.White, FontSize = 13 };
-    readonly Label _personal = new() { TextColor = Color.FromArgb("#EAF3FF"), FontSize = 13, FontAttributes = FontAttributes.Italic, LineBreakMode = LineBreakMode.TailTruncation };
-    readonly Entry _buscar = new() { Placeholder = "Buscar contactos...", FontSize = 14, ClearButtonVisibility = ClearButtonVisibility.WhileEditing };
+    readonly Label _nombre = new() { TextColor = Colors.White, FontSize = Tema.T(18), FontAttributes = FontAttributes.Bold, LineBreakMode = LineBreakMode.TailTruncation };
+    readonly Label _estado = new() { TextColor = Colors.White, FontSize = Tema.T(13) };
+    readonly Label _personal = new() { TextColor = Color.FromArgb("#EAF3FF"), FontSize = Tema.T(13), FontAttributes = FontAttributes.Italic, LineBreakMode = LineBreakMode.TailTruncation };
+    readonly Entry _buscar = new() { Placeholder = "Buscar contactos...", FontSize = Tema.T(14), ClearButtonVisibility = ClearButtonVisibility.WhileEditing };
     readonly VerticalStackLayout _lista = new() { Padding = new Thickness(0, 0, 0, 90) };
     readonly Aviso _aviso = new();
     readonly HashSet<string> _colapsados = new();
     bool _navegando;
+    readonly HashSet<string> _escribiendo = new(StringComparer.OrdinalIgnoreCase);
+    bool _permisoPedido;
 
     public ContactsPage()
     {
@@ -26,10 +29,10 @@ public class ContactsPage : ContentPage
         agregar.Clicked += async (_, _) => await AgregarContactoAsync();
         var salir = new ToolbarItem { Text = "Cerrar sesión", Order = ToolbarItemOrder.Secondary };
         salir.Clicked += async (_, _) => await CerrarSesionAsync(confirmar: true);
-        var quitarDemo = new ToolbarItem { Text = "Quitar contactos de demostración", Order = ToolbarItemOrder.Secondary };
-        quitarDemo.Clicked += async (_, _) => await QuitarDemoAsync();
+        var configuracion = new ToolbarItem { Text = "Configuración" };
+        configuracion.Clicked += async (_, _) => await AbrirConfiguracionAsync();
         ToolbarItems.Add(agregar);
-        ToolbarItems.Add(quitarDemo);
+        ToolbarItems.Add(configuracion);
         ToolbarItems.Add(salir);
 
         Tema.AlTocar(_nombre, AbrirPerfilAsync);
@@ -86,12 +89,19 @@ public class ContactsPage : ContentPage
         Eventos.ContactosCambiaron += OnContactosCambiaron;
         Eventos.InvitacionNueva += OnInvitacion;
         Eventos.SesionVencida += OnSesionVencida;
+        Eventos.Escribiendo += OnEscribiendo;
     }
 
-    protected override void OnAppearing()
+    protected override async void OnAppearing()
     {
         base.OnAppearing();
         _ = RecargarAsync();
+        if (!_permisoPedido)
+        {
+            _permisoPedido = true;
+            await Notificaciones.PedirPermisoAsync();
+            await Actualizaciones.RevisarAlIniciarAsync(this);
+        }
     }
 
     bool EstoyEnPantalla => Navigation.NavigationStack.LastOrDefault() == this;
@@ -103,7 +113,7 @@ public class ContactsPage : ContentPage
         _ = RecargarAsync();
         if (EstoyEnPantalla && !Simulador.EstaEnLinea(anterior) && Simulador.EstaEnLinea(c))
             _aviso.Mostrar($"{Tema.Emoticones(c.Nombre)}\nacaba de iniciar sesión.", c.Email,
-                Tema.Avatar(c.Nombre, c.Email, 40, c.Avatar));
+                Tema.Avatar(c.Nombre, c.Email, Aviso.LadoIcono, c.Avatar));
     }
 
     void OnMensaje(Mensaje m, Contacto c)
@@ -115,10 +125,16 @@ public class ContactsPage : ContentPage
         _aviso.Mostrar(m.EsZumbido
             ? $"{nombre}\nte ha enviado un zumbido."
             : $"{nombre} dice:\n{Tema.Emoticones(m.Texto)}", c.Email,
-            Tema.Avatar(c.Nombre, c.Email, 40, c.Avatar));
+            Tema.Avatar(c.Nombre, c.Email, Aviso.LadoIcono, c.Avatar));
     }
 
     void OnContactosCambiaron() => _ = RecargarAsync();
+
+    void OnEscribiendo(string email, bool si)
+    {
+        bool cambio = si ? _escribiendo.Add(email) : _escribiendo.Remove(email);
+        if (cambio) _ = RecargarAsync();
+    }
 
     void OnInvitacion(Invitacion i)
     {
@@ -126,7 +142,7 @@ public class ContactsPage : ContentPage
         if (!EstoyEnPantalla) return;
         Tema.Vibrar(150);
         _aviso.Mostrar($"{Tema.Emoticones(i.Nombre)}\nquiere agregarte a su lista de contactos.", i.Email,
-            Tema.Avatar(i.Nombre, i.Email, 40));
+            Tema.Avatar(i.Nombre, i.Email, Aviso.LadoIcono));
     }
 
     async void OnSesionVencida()
@@ -173,7 +189,7 @@ public class ContactsPage : ContentPage
             _lista.Children.Add(new Label
             {
                 Text = filtro.Length > 0 ? "Ningún contacto coincide con la búsqueda." : "Aún no tienes contactos. Toca «Agregar» para sumar uno.",
-                TextColor = Tema.Gris, FontSize = 14, Padding = new Thickness(18, 16)
+                TextColor = Tema.Gris, FontSize = Tema.T(14), Padding = new Thickness(18, 16)
             });
     }
 
@@ -184,7 +200,7 @@ public class ContactsPage : ContentPage
         _lista.Children.Add(new Label
         {
             Text = $"Solicitudes ({solicitudes.Count})",
-            FontSize = 14, FontAttributes = FontAttributes.Bold, TextColor = Color.FromArgb("#B45309"),
+            FontSize = Tema.T(14), FontAttributes = FontAttributes.Bold, TextColor = Color.FromArgb("#B45309"),
             Padding = new Thickness(14, 12, 14, 4)
         });
         foreach (var i in solicitudes)
@@ -200,8 +216,8 @@ public class ContactsPage : ContentPage
                 VerticalOptions = LayoutOptions.Center,
                 Children =
                 {
-                    new Label { Text = Tema.Emoticones(i.Nombre), FontSize = 15, TextColor = Tema.Texto, LineBreakMode = LineBreakMode.TailTruncation },
-                    new Label { Text = $"{i.Email} quiere agregarte · toca para responder", FontSize = 12, TextColor = Tema.Gris, LineBreakMode = LineBreakMode.TailTruncation }
+                    new Label { Text = Tema.Emoticones(i.Nombre), FontSize = Tema.T(15), TextColor = Tema.Texto, LineBreakMode = LineBreakMode.TailTruncation },
+                    new Label { Text = $"{i.Email} quiere agregarte · toca para responder", FontSize = Tema.T(12), TextColor = Tema.Gris, LineBreakMode = LineBreakMode.TailTruncation }
                 }
             }, 1, 0);
             Tema.AlTocar(fila, () => ResponderSolicitudAsync(i));
@@ -228,7 +244,7 @@ public class ContactsPage : ContentPage
         var cabecera = new Label
         {
             Text = $"{(colapsado ? "▸" : "▾")} {titulo} ({lista.Count})",
-            FontSize = 14,
+            FontSize = Tema.T(14),
             FontAttributes = FontAttributes.Bold,
             TextColor = Tema.AzulOscuro,
             Padding = new Thickness(14, 12, 14, 4)
@@ -261,21 +277,23 @@ public class ContactsPage : ContentPage
                 new Label
                 {
                     Text = Tema.Emoticones(c.Nombre) + sufijo,
-                    FontSize = 15,
+                    FontSize = Tema.T(15),
                     TextColor = enLinea ? Tema.Texto : Tema.Gris,
                     LineBreakMode = LineBreakMode.TailTruncation
                 }
             }
         };
-        var detalle = c.Pendiente ? "Esperando a que acepte tu invitación"
+        bool escribe = _escribiendo.Contains(c.Email);
+        var detalle = escribe ? "escribiendo..."
+            : c.Pendiente ? "Esperando a que acepte tu invitación"
             : !c.EsReal && Servicios.Usuario?.Token is not null ? $"demo · {c.MensajePersonal}".TrimEnd(' ', '·')
             : c.MensajePersonal;
         if (!string.IsNullOrWhiteSpace(detalle))
             textos.Children.Add(new Label
             {
                 Text = Tema.Emoticones(detalle),
-                FontSize = 12,
-                TextColor = Tema.Gris,
+                FontSize = Tema.T(12),
+                TextColor = escribe ? Tema.Verde : Tema.Gris,
                 FontAttributes = FontAttributes.Italic,
                 LineBreakMode = LineBreakMode.TailTruncation
             });
@@ -302,7 +320,7 @@ public class ContactsPage : ContentPage
                 StrokeShape = new RoundRectangle { CornerRadius = 10 },
                 Padding = new Thickness(7, 1),
                 VerticalOptions = LayoutOptions.Center,
-                Content = new Label { Text = sinLeer.ToString(), TextColor = Colors.White, FontSize = 12, FontAttributes = FontAttributes.Bold }
+                Content = new Label { Text = sinLeer.ToString(), TextColor = Colors.White, FontSize = Tema.T(12), FontAttributes = FontAttributes.Bold }
             }, 2, 0);
 
         Tema.AlTocar(fila, () => AbrirChatAsync(c));
@@ -384,7 +402,9 @@ public class ContactsPage : ContentPage
             return;
         }
         var existentes = await Servicios.Db.ContactosAsync(u.Email);
-        if (existentes.Any(c => c.Email == email && (c.EsReal || u.Token is null)))
+        var existente = existentes.FirstOrDefault(c => c.Email == email);
+        bool reenviar = existente is { Pendiente: true } && u.Token is not null;
+        if (existente is not null && !reenviar && (existente.EsReal || u.Token is null))
         {
             await DisplayAlert("Agregar un contacto", $"{email} ya está en tu lista de contactos.", "Aceptar");
             return;
@@ -402,9 +422,11 @@ public class ContactsPage : ContentPage
             await GuardarContactoRealAsync(u.Email, email, r);
             await RecargarAsync();
             var aceptado = r.Datos.TryGetProperty("contacto", out var cj) && cj.TryGetProperty("relacion", out var rel) && rel.GetString() == "aceptado";
-            await DisplayAlert("Contacto agregado", aceptado
+            await DisplayAlert(reenviar ? "Invitación reenviada" : "Contacto agregado", aceptado
                 ? $"{email} ya te tenía en su lista: ahora pueden verse y escribirse."
-                : $"Se envió una invitación a {email}. Aparecerá como Desconectado hasta que te acepte.", "Aceptar");
+                : reenviar
+                    ? $"Se volvió a enviar la invitación a {email}."
+                    : $"Se envió una invitación a {email}. Aparecerá como Desconectado hasta que te acepte.", "Aceptar");
             return;
         }
 
@@ -438,26 +460,37 @@ public class ContactsPage : ContentPage
         await Servicios.Db.GuardarContactoAsync(c);
     }
 
-    async Task QuitarDemoAsync()
+    async Task AbrirConfiguracionAsync()
     {
-        var u = Servicios.Usuario;
-        if (u is null) return;
-        if (!await DisplayAlert("Contactos de demostración",
-                "¿Quitar los contactos simulados y sus conversaciones? Tus contactos reales no se tocan.", "Quitar", "Cancelar"))
-            return;
-        await Servicios.Db.EliminarContactosDemoAsync(u.Email);
-        await RecargarAsync();
+        if (_navegando) return;
+        _navegando = true;
+        try { await Navigation.PushAsync(new ConfiguracionPage()); }
+        finally { _navegando = false; }
     }
 
-    async Task CerrarSesionAsync(bool confirmar)
+    /// <summary>Deja de escuchar eventos (al cerrar sesión o al reconstruir la pantalla).</summary>
+    public void Desconectar()
     {
-        if (confirmar && !await DisplayAlert("Cerrar sesión", "¿Quieres cerrar sesión?", "Cerrar sesión", "Cancelar"))
-            return;
         Eventos.PresenciaCambio -= OnPresencia;
         Eventos.MensajeRecibido -= OnMensaje;
         Eventos.ContactosCambiaron -= OnContactosCambiaron;
         Eventos.InvitacionNueva -= OnInvitacion;
         Eventos.SesionVencida -= OnSesionVencida;
+        Eventos.Escribiendo -= OnEscribiendo;
+    }
+
+    /// <summary>Pantalla principal nueva (por ejemplo, tras cambiar el tamaño del texto).</summary>
+    public static NavigationPage CrearRaiz() => new(new ContactsPage())
+    {
+        BarBackgroundColor = Tema.Azul,
+        BarTextColor = Colors.White
+    };
+
+    async Task CerrarSesionAsync(bool confirmar)
+    {
+        if (confirmar && !await DisplayAlert("Cerrar sesión", "¿Quieres cerrar sesión?", "Cerrar sesión", "Cancelar"))
+            return;
+        Desconectar();
 
         var u = Servicios.Usuario;
         if (u?.Token is { } token)
@@ -467,6 +500,7 @@ public class ContactsPage : ContentPage
             _ = ApiCuentas.CerrarSesionAsync(token);   // sin esperar: si no hay internet, vence sola
         }
         Servicios.CerrarSesion();
-        Application.Current!.Windows[0].Page = new LoginPage();
+        Preferences.Default.Remove(LoginPage.ClaveAutomatico);
+        Application.Current!.Windows[0].Page = new LoginPage(intentarAutomatico: false);
     }
 }

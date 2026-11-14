@@ -6,18 +6,18 @@ namespace MsnSim.UI;
 public class RegistroPage : ContentPage
 {
     readonly Action<string> _alTerminar;
-    readonly Entry _email = new() { Keyboard = Keyboard.Email, Placeholder = "nombre@ejemplo.com", FontSize = 15 };
+    readonly Entry _email = new() { Keyboard = Keyboard.Email, Placeholder = "nombre@ejemplo.com", FontSize = Tema.T(15) };
     readonly Entry _codigo = new()
     {
-        Keyboard = Keyboard.Numeric, MaxLength = 6, Placeholder = "000000", FontSize = 24,
+        Keyboard = Keyboard.Numeric, MaxLength = 6, Placeholder = "000000", FontSize = Tema.T(24),
         CharacterSpacing = 6, HorizontalTextAlignment = TextAlignment.Center
     };
-    readonly Entry _nombre = new() { Placeholder = "Cómo te verán tus contactos", FontSize = 15, MaxLength = 60 };
-    readonly Entry _pwd = new() { IsPassword = true, Placeholder = "Mínimo 8 caracteres", FontSize = 15 };
-    readonly Entry _pwd2 = new() { IsPassword = true, Placeholder = "Repite la contraseña", FontSize = 15 };
+    readonly Entry _nombre = new() { Placeholder = "Cómo te verán tus contactos", FontSize = Tema.T(15), MaxLength = 60 };
+    readonly Entry _pwd = new() { IsPassword = true, Placeholder = "Mínimo 8 caracteres", FontSize = Tema.T(15) };
+    readonly Entry _pwd2 = new() { IsPassword = true, Placeholder = "Repite la contraseña", FontSize = Tema.T(15) };
 
-    readonly Label _subtitulo = new() { FontSize = 14, TextColor = Tema.Gris, HorizontalTextAlignment = TextAlignment.Center };
-    readonly Label _error = new() { TextColor = Color.FromArgb("#C62828"), FontSize = 13, IsVisible = false };
+    readonly Label _subtitulo = new() { FontSize = Tema.T(14), TextColor = Tema.Gris, HorizontalTextAlignment = TextAlignment.Center };
+    readonly Label _error = new() { TextColor = Color.FromArgb("#C62828"), FontSize = Tema.T(13), IsVisible = false };
     readonly ActivityIndicator _cargando = new() { Color = Tema.Azul, IsVisible = false, HeightRequest = 32 };
     readonly VerticalStackLayout _paso1, _paso2, _paso3;
     readonly Button _reenviar;
@@ -80,7 +80,7 @@ public class RegistroPage : ContentPage
                 MaximumWidthRequest = 460,
                 Children =
                 {
-                    new Label { Text = "Crear una cuenta", FontSize = 26, FontAttributes = FontAttributes.Bold, TextColor = Tema.Azul, HorizontalTextAlignment = TextAlignment.Center },
+                    new Label { Text = "Crear una cuenta", FontSize = Tema.T(26), FontAttributes = FontAttributes.Bold, TextColor = Tema.Azul, HorizontalTextAlignment = TextAlignment.Center },
                     _subtitulo,
                     _paso1, _paso2, _paso3,
                     _error, _cargando,

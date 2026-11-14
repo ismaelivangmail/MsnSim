@@ -1,17 +1,38 @@
 using Microsoft.Maui.Controls.Shapes;
 using Microsoft.Maui.Devices;
+using Microsoft.Maui.Storage;
 using MsnSim.Data;
 
 namespace MsnSim.UI;
 
 public static class Tema
 {
+    // ---------- Tamaño del texto (accesibilidad) ----------
+    const string ClaveEscala = "escala_texto";
+
+    public static readonly (string Nombre, double Escala)[] TamanosTexto =
+    {
+        ("Normal", 1.0), ("Grande", 1.2), ("Muy grande", 1.4), ("Máximo", 1.65)
+    };
+
+    public static double Escala { get; private set; } = Preferences.Default.Get(ClaveEscala, 1.0);
+
+    /// <summary>Tamaño de letra ajustado a la preferencia del usuario.</summary>
+    public static double T(double tamano) => Math.Round(tamano * Escala, 1);
+
+    public static void CambiarEscala(double escala)
+    {
+        Escala = escala;
+        Preferences.Default.Set(ClaveEscala, escala);
+    }
+
     public static readonly Color Azul = Color.FromArgb("#1D5FA8");
     public static readonly Color AzulOscuro = Color.FromArgb("#123F73");
     public static readonly Color AzulClaro = Color.FromArgb("#E3EFFB");
     public static readonly Color Borde = Color.FromArgb("#A9C8EA");
     public static readonly Color Gris = Color.FromArgb("#6B7280");
     public static readonly Color Texto = Color.FromArgb("#1F2937");
+    public static readonly Color Verde = Color.FromArgb("#15803D");
 
     public static readonly Estado[] Seleccionables =
     {
@@ -149,7 +170,7 @@ public static class Tema
     }
 
     public static Label Etiqueta(string texto) =>
-        new() { Text = texto, FontSize = 13, TextColor = Texto, Margin = new Thickness(0, 6, 0, 0) };
+        new() { Text = texto, FontSize = Tema.T(13), TextColor = Texto, Margin = new Thickness(0, 6, 0, 0) };
 
     public static Border Caja(View contenido) => new()
     {
@@ -163,14 +184,14 @@ public static class Tema
     public static Button BotonPrincipal(string texto) => new()
     {
         Text = texto, BackgroundColor = Azul, TextColor = Colors.White,
-        FontAttributes = FontAttributes.Bold, CornerRadius = 6, HeightRequest = 46,
+        FontAttributes = FontAttributes.Bold, FontSize = T(16), CornerRadius = 6, MinimumHeightRequest = 46,
         Margin = new Thickness(0, 8, 0, 0)
     };
 
     public static Button BotonEnlace(string texto) => new()
     {
         Text = texto, BackgroundColor = Colors.Transparent, TextColor = Azul,
-        FontSize = 14, BorderWidth = 0, HeightRequest = 40
+        FontSize = Tema.T(14), BorderWidth = 0, HeightRequest = 40
     };
 
     public static void AlTocar(View v, Func<Task> accion)

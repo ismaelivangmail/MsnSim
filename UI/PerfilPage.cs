@@ -10,11 +10,11 @@ namespace MsnSim.UI;
 public class PerfilPage : ContentPage
 {
     readonly ContentView _foto = new() { HorizontalOptions = LayoutOptions.Center };
-    readonly Entry _nombre = new() { FontSize = 15, MaxLength = 60, Placeholder = "Cómo te verán tus contactos" };
-    readonly Entry _mensaje = new() { FontSize = 15, MaxLength = 120, Placeholder = "Escribe un mensaje personal" };
-    readonly Label _correo = new() { FontSize = 13, TextColor = Tema.Gris, HorizontalTextAlignment = TextAlignment.Center };
-    readonly Label _nota = new() { FontSize = 12, TextColor = Tema.Gris, HorizontalTextAlignment = TextAlignment.Center };
-    readonly Label _error = new() { TextColor = Color.FromArgb("#C62828"), FontSize = 13, IsVisible = false };
+    readonly Entry _nombre = new() { FontSize = Tema.T(15), MaxLength = 60, Placeholder = "Cómo te verán tus contactos" };
+    readonly Entry _mensaje = new() { FontSize = Tema.T(15), MaxLength = 120, Placeholder = "Escribe un mensaje personal" };
+    readonly Label _correo = new() { FontSize = Tema.T(13), TextColor = Tema.Gris, HorizontalTextAlignment = TextAlignment.Center };
+    readonly Label _nota = new() { FontSize = Tema.T(12), TextColor = Tema.Gris, HorizontalTextAlignment = TextAlignment.Center };
+    readonly Label _error = new() { TextColor = Color.FromArgb("#C62828"), FontSize = Tema.T(13), IsVisible = false };
     readonly ActivityIndicator _cargando = new() { Color = Tema.Azul, IsVisible = false, HeightRequest = 32 };
     readonly Button _guardar = Tema.BotonPrincipal("Guardar");
     readonly Button _cambiarFoto = Tema.BotonEnlace("Cambiar foto");
@@ -41,7 +41,7 @@ public class PerfilPage : ContentPage
                     _foto, _cambiarFoto, _correo,
                     Tema.Etiqueta("Nombre para mostrar:"), Tema.Caja(_nombre),
                     Tema.Etiqueta("Mensaje personal:"), Tema.Caja(_mensaje),
-                    new Label { Text = "Puedes usar emoticonos como :) (Y) (L)", FontSize = 12, TextColor = Tema.Gris },
+                    new Label { Text = "Puedes usar emoticonos como :) (Y) (L)", FontSize = Tema.T(12), TextColor = Tema.Gris },
                     _error, _cargando, _guardar,
                     _nota
                 }
