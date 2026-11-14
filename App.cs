@@ -4,7 +4,7 @@ using MsnSim.UI;
 
 namespace MsnSim;
 
-public class App : Application
+public class App : Microsoft.Maui.Controls.Application
 {
     public App()
     {
