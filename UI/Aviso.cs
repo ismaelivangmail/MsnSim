@@ -8,13 +8,18 @@ public class Aviso : Border
     const double Oculto = 240;
     readonly Label _texto = new()
     {
-        FontSize = 14,
+        FontSize = Tema.T(15),
         TextColor = Tema.Texto,
         MaxLines = 3,
         LineBreakMode = LineBreakMode.TailTruncation,
         VerticalOptions = LayoutOptions.Center
     };
-    readonly ContentView _icono = new() { VerticalOptions = LayoutOptions.Center };
+    public const double LadoIcono = 80;
+    readonly ContentView _icono = new()
+    {
+        WidthRequest = LadoIcono, HeightRequest = LadoIcono,
+        HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center
+    };
     CancellationTokenSource? _cts;
 
     public string? Email { get; private set; }
@@ -38,6 +43,8 @@ public class Aviso : Border
         StrokeThickness = 1.5;
         Background = Tema.Degradado("#FFFFFF", "#D6E8FA");
         VerticalOptions = LayoutOptions.End;
+        // Mismo tamaño para todos los avisos, sin importar el texto.
+        HeightRequest = Math.Max(LadoIcono, Tema.T(15) * 1.45 * 3) + 24;
         IsVisible = false;
         TranslationY = Oculto;
         Shadow = new Shadow { Brush = new SolidColorBrush(Colors.Black), Opacity = 0.25f, Radius = 12, Offset = new Point(0, 4) };
@@ -52,7 +59,11 @@ public class Aviso : Border
 
     public async void Mostrar(string texto, string? email, View? icono = null)
     {
-        _icono.Content = icono ?? new Label { Text = "💬", FontSize = 24 };
+        _icono.Content = icono ?? new Label
+        {
+            Text = "💬", FontSize = 44,
+            HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center
+        };
         _texto.Text = texto;
         Email = email;
         _cts?.Cancel();

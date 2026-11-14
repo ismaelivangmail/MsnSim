@@ -47,16 +47,19 @@ adb install -r bin/Release/net10.0-android/publish/com.ivanovsky.msnsim-Signed.a
 Sustituir `Simulador` por `MsnClient.Core` (ya validado contra Escargot)
 manteniendo los mismos eventos: PresenciaCambio, MensajeRecibido, Escribiendo.
 
-## Abrir Puertos en Modem
+## Firma y actualizaciones (importante)
+Android sólo instala una versión nueva encima de la anterior si las dos están firmadas
+con la misma llave. Por eso GitHub firma siempre con la llave de MsnSim, guardada como secreto:
 
-Aplicaciones>Reenvío de puertos
+1. En GitHub: tu repositorio → Settings → Secrets and variables → Actions → New repository secret.
+2. Crea `ANDROID_KEYSTORE_B64` y pega el contenido completo de `ANDROID_KEYSTORE_B64.txt`.
+3. Crea `ANDROID_KEYSTORE_PASS` y pega el contenido de `ANDROID_KEYSTORE_PASS.txt`.
+4. Guarda `msnsim.keystore` y su contraseña en un lugar seguro. **Si se pierden, no podrás
+   publicar actualizaciones**: habría que desinstalar la app en todos los teléfonos.
+   Nunca subas esos archivos al repositorio.
 
-Nombre de la Aplicación: no mover default valores de usuario
-Puerto WAN 80~80
-Puerto LAN 80~80
-
-Cliente Interno DESKTOP-SD4LIOH
-Protocolo TCP
-Habilitar Asociación - Mapeo
-
-
+Cada compilación usa el número de ejecución de GitHub como versión (0.1.N) y deja en
+Artifacts un zip con `MsnSim.apk` y `version.json`. Para publicarla, copia los dos a la
+carpeta `actualizaciones` junto a `api.php` en el servidor. Al abrir la app, cada teléfono
+revisa esa carpeta y ofrece instalar la versión nueva (también desde Configuración →
+Buscar actualizaciones).

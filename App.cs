@@ -1,3 +1,4 @@
+using Microsoft.Maui.Controls.PlatformConfiguration.AndroidSpecific;
 using MsnSim.Services;
 using MsnSim.UI;
 
@@ -9,6 +10,11 @@ public class App : Application
     {
         // Los colores están pensados para tema claro, como el Messenger de la época.
         UserAppTheme = AppTheme.Light;
+
+        // El teclado encoge la pantalla en vez de empujarla hacia arriba:
+        // el encabezado se queda fijo y la barra de escritura queda justo encima del teclado.
+        this.On<global::Microsoft.Maui.Controls.PlatformConfiguration.Android>()
+            .UseWindowSoftInputModeAdjust(WindowSoftInputModeAdjust.Resize);
     }
 
     protected override void OnSleep()
@@ -22,6 +28,8 @@ public class App : Application
         base.OnResume();
         Servicios.Sync.EnSegundoPlano = false;
         Servicios.Sync.Despertar();
+        Notificaciones.LimpiarTodas();
+        if (Servicios.Usuario is not null) SegundoPlano.Iniciar();   // por si Android lo detuvo
     }
 
     protected override Window CreateWindow(IActivationState? activationState)

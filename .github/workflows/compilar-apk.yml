@@ -29,11 +29,47 @@ jobs:
       - name: Instalar dependencias de Android
         run: dotnet build MsnSim.csproj -t:InstallAndroidDependencies -f net10.0-android -p:AndroidSdkDirectory="$ANDROID_HOME" -p:JavaSdkDirectory="$JAVA_HOME" -p:AcceptAndroidSDKLicenses=True
 
-      - name: Compilar APK
-        run: dotnet publish MsnSim.csproj -f net10.0-android -c Release -p:AndroidSdkDirectory="$ANDROID_HOME" -p:JavaSdkDirectory="$JAVA_HOME"
+      # Firma fija: Android sólo instala una actualización encima si viene firmada con la misma llave.
+      # Necesita los secretos ANDROID_KEYSTORE_B64 y ANDROID_KEYSTORE_PASS (Settings → Secrets → Actions).
+      - name: Preparar llave de firma
+        run: |
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
+            echo "::error::Falta el secreto ANDROID_KEYSTORE_B64 (ver README)"; exit 1
+          fi
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$RUNNER_TEMP/msnsim.keystore"
 
-      - name: Subir APK
+      # El número de versión es el número de compilación de GitHub: siempre sube solo.
+      - name: Compilar APK
+        env:
+          CLAVE_FIRMA: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+        run: >
+          dotnet publish MsnSim.csproj -f net10.0-android -c Release
+          -p:AndroidSdkDirectory="$ANDROID_HOME" -p:JavaSdkDirectory="$JAVA_HOME"
+          -p:ApplicationVersion=${{ github.run_number }}
+          -p:ApplicationDisplayVersion=0.1.${{ github.run_number }}
+          -p:AndroidKeyStore=true
+          -p:AndroidSigningKeyStore="$RUNNER_TEMP/msnsim.keystore"
+          -p:AndroidSigningKeyAlias=msnsim
+          -p:AndroidSigningKeyPass=env:CLAVE_FIRMA
+          -p:AndroidSigningStorePass=env:CLAVE_FIRMA
+
+      # Lo que se sube a la carpeta "actualizaciones" del servidor: el APK y su version.json.
+      - name: Preparar actualización
+        env:
+          NOTAS: ${{ github.event.head_commit.message }}
+        run: |
+          mkdir -p actualizaciones
+          cp bin/Release/net10.0-android/publish/*-Signed.apk actualizaciones/MsnSim.apk
+          jq -n --argjson version ${{ github.run_number }} \
+                --arg nombre "0.1.${{ github.run_number }}" \
+                --arg notas "${NOTAS:-Mejoras y correcciones.}" \
+                --arg fecha "$(date -u +%Y-%m-%d)" \
+                '{version: $version, nombre: $nombre, apk: "MsnSim.apk", notas: $notas, obligatoria: false, fecha: $fecha}' \
+                > actualizaciones/version.json
+          cat actualizaciones/version.json
+
+      - name: Subir APK y version.json
         uses: actions/upload-artifact@v4
         with:
-          name: MsnSim-apk
-          path: bin/Release/net10.0-android/publish/*-Signed.apk
+          name: MsnSim-${{ github.run_number }}
+          path: actualizaciones/

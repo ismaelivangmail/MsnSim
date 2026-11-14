@@ -14,6 +14,7 @@ public sealed class Sincronizador
 {
     const int MsPrimerPlano = 3000;
     const int MsSegundoPlano = 15000;
+    const int MsChatAbierto = 1500;      // con una conversación en pantalla: "escribiendo" casi al instante
 
     readonly Database _db;
     readonly HashSet<string> _escribiendo = new(StringComparer.OrdinalIgnoreCase);
@@ -26,6 +27,9 @@ public sealed class Sincronizador
     public Sincronizador(Database db) => _db = db;
 
     public bool EnSegundoPlano { get; set; }
+
+    /// <summary>Mínimo entre zumbidos; lo manda el servidor (msnsim_config.php).</summary>
+    public int SegundosZumbido { get; private set; } = 30;
     public IReadOnlyList<Invitacion> Invitaciones => _invitaciones;
 
     public void Iniciar()
@@ -59,7 +63,10 @@ public sealed class Sincronizador
             }
 
             _despertar = new TaskCompletionSource();
-            await Task.WhenAny(Task.Delay(EnSegundoPlano ? MsSegundoPlano : MsPrimerPlano, ct), _despertar.Task);
+            int espera = EnSegundoPlano ? MsSegundoPlano
+                       : Servicios.ChatAbierto is not null ? MsChatAbierto
+                       : MsPrimerPlano;
+            await Task.WhenAny(Task.Delay(espera, ct), _despertar.Task);
         }
     }
 
@@ -87,6 +94,8 @@ public sealed class Sincronizador
         long nuevoAck = await AplicarMensajesAsync(u, d.GetProperty("mensajes"), ack);
         if (nuevoAck != ack) Preferences.Default.Set(claveAck, nuevoAck);
         AplicarEscribiendo(d.GetProperty("escribiendo"));
+        if (d.TryGetProperty("config", out var cfg) && cfg.TryGetProperty("segundos_zumbido", out var sz) && sz.TryGetInt32(out var seg))
+            SegundosZumbido = seg;
     }
 
     async Task AplicarContactosAsync(Usuario u, JsonElement lista)

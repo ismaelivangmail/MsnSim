@@ -127,6 +127,12 @@ public sealed class Database
 
     public Task GuardarUsuarioAsync(Usuario u) => _db.UpdateAsync(u);
 
+    public async Task<Usuario?> UsuarioAsync(string email)
+    {
+        await InitAsync();
+        return await _db.FindAsync<Usuario>(email);
+    }
+
     // ---------- Contactos ----------
 
     public async Task<List<Contacto>> ContactosAsync(string propietario)

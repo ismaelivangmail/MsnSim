@@ -22,7 +22,7 @@ public class ChatPage : ContentPage
     VerticalStackLayout? _grupo;          // bloque de mensajes seguidos del mismo remitente
     string? _ultimoRemitente;
     bool _cargado;
-    DateTime _ultimoZumbido = DateTime.MinValue;
+    static readonly Dictionary<string, DateTime> UltimoZumbido = new();   // por contacto, aunque cierres el chat
 
     public ChatPage(Contacto c)
     {
@@ -41,8 +41,8 @@ public class ChatPage : ContentPage
         ToolbarItems.Add(eliminar);
 
         // Encabezado "Para:"
-        _encNombre = new Label { FontSize = 15, FontAttributes = FontAttributes.Bold, TextColor = Tema.Texto, LineBreakMode = LineBreakMode.TailTruncation };
-        _encDetalle = new Label { FontSize = 12, TextColor = Tema.Gris, LineBreakMode = LineBreakMode.TailTruncation };
+        _encNombre = new Label { FontSize = Tema.T(15), FontAttributes = FontAttributes.Bold, TextColor = Tema.Texto, LineBreakMode = LineBreakMode.TailTruncation };
+        _encDetalle = new Label { FontSize = Tema.T(12), TextColor = Tema.Gris, LineBreakMode = LineBreakMode.TailTruncation };
         var encabezado = new Grid
         {
             Padding = new Thickness(12, 8),
@@ -54,18 +54,23 @@ public class ChatPage : ContentPage
                 new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto)
             }
         };
-        encabezado.Add(new Label { Text = "Para:", FontSize = 13, TextColor = Tema.Gris, VerticalOptions = LayoutOptions.Center }, 0, 0);
+        encabezado.Add(new Label { Text = "Para:", FontSize = Tema.T(13), TextColor = Tema.Gris, VerticalOptions = LayoutOptions.Center }, 0, 0);
         encabezado.Add(_encPunto, 1, 0);
         encabezado.Add(new VerticalStackLayout { VerticalOptions = LayoutOptions.Center, Children = { _encNombre, _encDetalle } }, 2, 0);
         encabezado.Add(Tema.Avatar(c.Nombre, c.Email, 40, c.Avatar), 3, 0);
 
         _scroll = new ScrollView { Content = _mensajes };
-        _escribiendo = new Label { FontSize = 12, FontAttributes = FontAttributes.Italic, TextColor = Tema.Gris, Padding = new Thickness(14, 2), IsVisible = false };
+        _escribiendo = new Label { FontSize = Tema.T(13), FontAttributes = FontAttributes.Italic, TextColor = Tema.Verde, Padding = new Thickness(14, 4), IsVisible = false };
 
         // Barra de escritura
-        _entrada = new Entry { Placeholder = "Escribe un mensaje...", Keyboard = Keyboard.Chat, ReturnType = ReturnType.Send, FontSize = 15 };
+        _entrada = new Entry { Placeholder = "Escribe un mensaje...", Keyboard = Keyboard.Chat, ReturnType = ReturnType.Send, FontSize = Tema.T(15) };
         _entrada.Completed += async (_, _) => await EnviarAsync();
-        _entrada.Focused += (_, _) => MostrarEmojis(false);
+        _entrada.Focused += async (_, _) =>
+        {
+            MostrarEmojis(false);
+            await Task.Delay(300);        // espera a que el teclado termine de abrir
+            await BajarAsync(false);
+        };
         _entrada.TextChanged += (_, e) =>
         {
             if (_c.EsReal && !_c.Pendiente && !string.IsNullOrEmpty(e.NewTextValue))
@@ -128,7 +133,7 @@ public class ChatPage : ContentPage
     {
         var b = new Button
         {
-            Text = texto, FontSize = 18, Padding = 0,
+            Text = texto, FontSize = Tema.T(18), Padding = 0,
             BackgroundColor = Colors.White, TextColor = Tema.Texto,
             BorderColor = Tema.Borde, BorderWidth = 1, CornerRadius = 6,
             WidthRequest = 44, HeightRequest = 42
@@ -145,7 +150,10 @@ public class ChatPage : ContentPage
             : _c.Pendiente ? "Pendiente: todavía no acepta tu invitación"
             : Tema.NombreEstado(_c.Estado);
         var personal = string.IsNullOrWhiteSpace(_c.MensajePersonal) ? "" : $"  –  {Tema.Emoticones(_c.MensajePersonal)}";
-        _encDetalle.Text = estado + personal;
+        // Como en WhatsApp: mientras escribe, el encabezado lo dice en lugar del estado.
+        _encDetalle.Text = _contactoEscribiendo ? "escribiendo..." : estado + personal;
+        _encDetalle.TextColor = _contactoEscribiendo ? Tema.Verde : Tema.Gris;
+        _encDetalle.FontAttributes = _contactoEscribiendo ? FontAttributes.Italic : FontAttributes.None;
         _itemBloquear.Text = _c.Bloqueado ? "Desbloquear" : "Bloquear";
     }
 
@@ -155,6 +163,7 @@ public class ChatPage : ContentPage
     {
         base.OnAppearing();
         Servicios.ChatAbierto = _c.Email;
+        Servicios.Sync.Despertar();   // trae el estado al momento
         Eventos.PresenciaCambio += OnPresencia;
         Eventos.MensajeRecibido += OnMensaje;
         Eventos.Escribiendo += OnEscribiendo;
@@ -223,7 +232,7 @@ public class ChatPage : ContentPage
             _aviso.Mostrar(m.EsZumbido
                 ? $"{nombre}\nte ha enviado un zumbido."
                 : $"{nombre} dice:\n{Tema.Emoticones(m.Texto)}", c.Email,
-                Tema.Avatar(c.Nombre, c.Email, 40, c.Avatar));
+                Tema.Avatar(c.Nombre, c.Email, Aviso.LadoIcono, c.Avatar));
             return;
         }
         _escribiendo.IsVisible = false;
@@ -232,11 +241,16 @@ public class ChatPage : ContentPage
         if (m.EsZumbido) await SacudirAsync();
     }
 
+    bool _contactoEscribiendo;
+
     void OnEscribiendo(string email, bool escribiendo)
     {
-        if (email != _c.Email) return;
+        if (!string.Equals(email, _c.Email, StringComparison.OrdinalIgnoreCase)) return;
+        _contactoEscribiendo = escribiendo;
         _escribiendo.Text = $"{Tema.Emoticones(_c.Nombre)} está escribiendo un mensaje...";
         _escribiendo.IsVisible = escribiendo;
+        ActualizarEncabezado();
+        if (escribiendo) _ = BajarAsync();
     }
 
     // ---------- Pintado ----------
@@ -255,7 +269,7 @@ public class ChatPage : ContentPage
         _grupo!.Children.Add(new Label
         {
             Text = Tema.Emoticones(m.Texto),
-            FontSize = 15,
+            FontSize = Tema.T(15),
             TextColor = m.Enviado ? Tema.Texto : Tema.ColorDe(_c.Email)
         });
     }
@@ -274,7 +288,7 @@ public class ChatPage : ContentPage
         _grupo.Children.Add(new Label
         {
             Text = $"{Tema.Emoticones(remitente)} dice ({hora}):",
-            FontSize = 12,
+            FontSize = Tema.T(12),
             TextColor = Tema.Gris
         });
 
@@ -300,7 +314,7 @@ public class ChatPage : ContentPage
         _mensajes.Children.Add(new Label
         {
             Text = texto,
-            FontSize = 12,
+            FontSize = Tema.T(12),
             FontAttributes = FontAttributes.Italic,
             TextColor = Tema.Gris,
             Margin = new Thickness(0, 8, 0, 0)
@@ -408,9 +422,11 @@ public class ChatPage : ContentPage
     {
         var u = Servicios.Usuario;
         if (u is null) return;
-        if ((DateTime.Now - _ultimoZumbido).TotalSeconds < 8)
+        int espera = Servicios.Sync.SegundosZumbido;
+        var faltan = UltimoZumbido.TryGetValue(_c.Email, out var ultimo) ? espera - (DateTime.Now - ultimo).TotalSeconds : 0;
+        if (faltan > 0)
         {
-            Sistema("No puedes enviar zumbidos con tanta frecuencia.");
+            Sistema($"No puedes enviar zumbidos con tanta frecuencia. Espera {Math.Ceiling(faltan)} segundos.");
             await BajarAsync();
             return;
         }
@@ -420,8 +436,9 @@ public class ChatPage : ContentPage
             return;
         }
 
-        _ultimoZumbido = DateTime.Now;
+        UltimoZumbido[_c.Email] = DateTime.Now;
         if (_c.EsReal && !await EnviarRealAsync("", true)) return;
+        Sonidos.Zumbido();
         var m = new Mensaje
         {
             Propietario = u.Email, Contacto = _c.Email, Enviado = true,

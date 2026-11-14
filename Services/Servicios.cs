@@ -18,14 +18,17 @@ public static class Servicios
     public static void IniciarSesion(Usuario u)
     {
         Usuario = u;
+        Alertas.Iniciar();
         Sim.Iniciar();
         if (!string.IsNullOrEmpty(u.Token)) Sync.Iniciar();   // la cuenta de prueba no tiene servidor
+        SegundoPlano.Iniciar();
     }
 
     public static void CerrarSesion()
     {
         Sim.Detener();
         Sync.Detener();
+        SegundoPlano.Detener();
         Usuario = null;
         ChatAbierto = null;
     }
