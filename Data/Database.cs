@@ -43,6 +43,9 @@ public sealed class Database
         });
 
         await SembrarContactosAsync(UsuarioDemo);
+        var demo = await _db.FindAsync<Usuario>(UsuarioDemo);
+        demo.DemoSembrado = true;
+        await _db.UpdateAsync(demo);
     }
 
     /// <summary>Contactos simulados y un poco de historial para que una cuenta nueva no esté vacía.</summary>
@@ -96,10 +99,14 @@ public sealed class Database
             u.Avatar = null;
             u.AvatarRemoto = avatarRemoto;
         }
+        // Contactos de demostración: sólo la primera vez, para que una cuenta nueva no se vea vacía.
+        if (!u.DemoSembrado)
+        {
+            if ((await ContactosAsync(email)).Count == 0)
+                await SembrarContactosAsync(email);
+            u.DemoSembrado = true;
+        }
         await _db.InsertOrReplaceAsync(u);
-
-        if ((await ContactosAsync(email)).Count == 0)
-            await SembrarContactosAsync(email);
         return u;
     }
 
@@ -134,6 +141,21 @@ public sealed class Database
     {
         await _db.DeleteAsync(c);
         await BorrarHistorialAsync(c.Propietario, c.Email);
+    }
+
+    public async Task<Contacto?> ContactoPorEmailAsync(string propietario, string email) =>
+        (await ContactosAsync(propietario)).FirstOrDefault(c => string.Equals(c.Email, email, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Quita el contacto de la lista pero conserva el historial.</summary>
+    public Task QuitarContactoAsync(Contacto c) => _db.DeleteAsync(c);
+
+    /// <summary>Borra los contactos de demostración y sus conversaciones.</summary>
+    public async Task EliminarContactosDemoAsync(string propietario)
+    {
+        await _db.ExecuteAsync(
+            "DELETE FROM mensajes WHERE Propietario = ? AND Contacto IN (SELECT Email FROM contactos WHERE Propietario = ? AND EsReal = 0)",
+            propietario, propietario);
+        await _db.ExecuteAsync("DELETE FROM contactos WHERE Propietario = ? AND EsReal = 0", propietario);
     }
 
     // ---------- Mensajes ----------

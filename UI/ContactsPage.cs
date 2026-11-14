@@ -26,7 +26,10 @@ public class ContactsPage : ContentPage
         agregar.Clicked += async (_, _) => await AgregarContactoAsync();
         var salir = new ToolbarItem { Text = "Cerrar sesión", Order = ToolbarItemOrder.Secondary };
         salir.Clicked += async (_, _) => await CerrarSesionAsync(confirmar: true);
+        var quitarDemo = new ToolbarItem { Text = "Quitar contactos de demostración", Order = ToolbarItemOrder.Secondary };
+        quitarDemo.Clicked += async (_, _) => await QuitarDemoAsync();
         ToolbarItems.Add(agregar);
+        ToolbarItems.Add(quitarDemo);
         ToolbarItems.Add(salir);
 
         Tema.AlTocar(_nombre, AbrirPerfilAsync);
@@ -78,8 +81,11 @@ public class ContactsPage : ContentPage
         Content = raiz;
 
         _aviso.Tocado += AbrirChatPorEmailAsync;
-        Servicios.Sim.PresenciaCambio += OnPresencia;
-        Servicios.Sim.MensajeRecibido += OnMensaje;
+        Eventos.PresenciaCambio += OnPresencia;
+        Eventos.MensajeRecibido += OnMensaje;
+        Eventos.ContactosCambiaron += OnContactosCambiaron;
+        Eventos.InvitacionNueva += OnInvitacion;
+        Eventos.SesionVencida += OnSesionVencida;
     }
 
     protected override void OnAppearing()
@@ -112,6 +118,23 @@ public class ContactsPage : ContentPage
             Tema.Avatar(c.Nombre, c.Email, 40, c.Avatar));
     }
 
+    void OnContactosCambiaron() => _ = RecargarAsync();
+
+    void OnInvitacion(Invitacion i)
+    {
+        _ = RecargarAsync();
+        if (!EstoyEnPantalla) return;
+        Tema.Vibrar(150);
+        _aviso.Mostrar($"{Tema.Emoticones(i.Nombre)}\nquiere agregarte a su lista de contactos.", i.Email,
+            Tema.Avatar(i.Nombre, i.Email, 40));
+    }
+
+    async void OnSesionVencida()
+    {
+        await DisplayAlert("Sesión vencida", "Tu sesión venció. Vuelve a iniciar sesión.", "Aceptar");
+        await CerrarSesionAsync(confirmar: false);
+    }
+
     // ---------- Lista ----------
 
     async Task RecargarAsync()
@@ -142,15 +165,61 @@ public class ContactsPage : ContentPage
         var fuera = contactos.Where(c => !Simulador.EstaEnLinea(c)).OrderBy(c => c.Nombre, orden).ToList();
 
         _lista.Children.Clear();
+        AgregarSolicitudes();
         AgregarGrupo("En línea", enLinea, noLeidos);
         AgregarGrupo("Sin conexión", fuera, noLeidos);
 
-        if (contactos.Count == 0)
+        if (contactos.Count == 0 && Servicios.Sync.Invitaciones.Count == 0)
             _lista.Children.Add(new Label
             {
                 Text = filtro.Length > 0 ? "Ningún contacto coincide con la búsqueda." : "Aún no tienes contactos. Toca «Agregar» para sumar uno.",
                 TextColor = Tema.Gris, FontSize = 14, Padding = new Thickness(18, 16)
             });
+    }
+
+    void AgregarSolicitudes()
+    {
+        var solicitudes = Servicios.Sync.Invitaciones;
+        if (solicitudes.Count == 0) return;
+        _lista.Children.Add(new Label
+        {
+            Text = $"Solicitudes ({solicitudes.Count})",
+            FontSize = 14, FontAttributes = FontAttributes.Bold, TextColor = Color.FromArgb("#B45309"),
+            Padding = new Thickness(14, 12, 14, 4)
+        });
+        foreach (var i in solicitudes)
+        {
+            var fila = new Grid
+            {
+                Padding = new Thickness(14, 6), ColumnSpacing = 12, BackgroundColor = Color.FromArgb("#FFF8E6"),
+                ColumnDefinitions = { new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star) }
+            };
+            fila.Add(Tema.Avatar(i.Nombre, i.Email, 40), 0, 0);
+            fila.Add(new VerticalStackLayout
+            {
+                VerticalOptions = LayoutOptions.Center,
+                Children =
+                {
+                    new Label { Text = Tema.Emoticones(i.Nombre), FontSize = 15, TextColor = Tema.Texto, LineBreakMode = LineBreakMode.TailTruncation },
+                    new Label { Text = $"{i.Email} quiere agregarte · toca para responder", FontSize = 12, TextColor = Tema.Gris, LineBreakMode = LineBreakMode.TailTruncation }
+                }
+            }, 1, 0);
+            Tema.AlTocar(fila, () => ResponderSolicitudAsync(i));
+            _lista.Children.Add(fila);
+        }
+    }
+
+    async Task ResponderSolicitudAsync(Invitacion i)
+    {
+        var r = await DisplayActionSheet(
+            $"{Tema.Emoticones(i.Nombre)} ({i.Email}) te agregó a su lista de contactos. ¿Quieres agregarlo también?",
+            "Decidir después", null, "Aceptar", "Rechazar", "Bloquear");
+        var respuesta = r switch { "Aceptar" => "aceptar", "Rechazar" => "rechazar", "Bloquear" => "bloquear", _ => null };
+        if (respuesta is null) return;
+
+        var res = await Servicios.Sync.ResponderInvitacionAsync(i.Email, respuesta);
+        if (!res.Ok) await DisplayAlert("Solicitud", res.Error, "Aceptar");
+        await RecargarAsync();
     }
 
     void AgregarGrupo(string titulo, List<Contacto> lista, Dictionary<string, int> noLeidos)
@@ -180,6 +249,7 @@ public class ContactsPage : ContentPage
     {
         bool enLinea = Simulador.EstaEnLinea(c);
         string sufijo = c.Bloqueado ? " (Bloqueado)"
+            : c.Pendiente ? " (pendiente)"
             : enLinea && c.Estado != Estado.Disponible ? $" ({Tema.NombreEstado(c.Estado)})" : "";
 
         var textos = new VerticalStackLayout
@@ -197,10 +267,13 @@ public class ContactsPage : ContentPage
                 }
             }
         };
-        if (!string.IsNullOrWhiteSpace(c.MensajePersonal))
+        var detalle = c.Pendiente ? "Esperando a que acepte tu invitación"
+            : !c.EsReal && Servicios.Usuario?.Token is not null ? $"demo · {c.MensajePersonal}".TrimEnd(' ', '·')
+            : c.MensajePersonal;
+        if (!string.IsNullOrWhiteSpace(detalle))
             textos.Children.Add(new Label
             {
-                Text = Tema.Emoticones(c.MensajePersonal),
+                Text = Tema.Emoticones(detalle),
                 FontSize = 12,
                 TextColor = Tema.Gris,
                 FontAttributes = FontAttributes.Italic,
@@ -255,7 +328,13 @@ public class ContactsPage : ContentPage
         var u = Servicios.Usuario;
         if (u is null) return;
         var c = (await Servicios.Db.ContactosAsync(u.Email)).FirstOrDefault(x => x.Email == email);
-        if (c is not null) await AbrirChatAsync(c);
+        if (c is not null)
+        {
+            await AbrirChatAsync(c);
+            return;
+        }
+        var solicitud = Servicios.Sync.Invitaciones.FirstOrDefault(i => i.Email == email);
+        if (solicitud is not null) await ResponderSolicitudAsync(solicitud);
     }
 
     async Task CambiarEstadoAsync()
@@ -305,12 +384,31 @@ public class ContactsPage : ContentPage
             return;
         }
         var existentes = await Servicios.Db.ContactosAsync(u.Email);
-        if (existentes.Any(c => c.Email == email))
+        if (existentes.Any(c => c.Email == email && (c.EsReal || u.Token is null)))
         {
             await DisplayAlert("Agregar un contacto", $"{email} ya está en tu lista de contactos.", "Aceptar");
             return;
         }
 
+        // Cuenta con servidor: se manda una invitación real.
+        if (u.Token is not null)
+        {
+            var r = await Servicios.Sync.AgregarAsync(email);
+            if (!r.Ok)
+            {
+                await DisplayAlert("Agregar un contacto", r.Error, "Aceptar");
+                return;
+            }
+            await GuardarContactoRealAsync(u.Email, email, r);
+            await RecargarAsync();
+            var aceptado = r.Datos.TryGetProperty("contacto", out var cj) && cj.TryGetProperty("relacion", out var rel) && rel.GetString() == "aceptado";
+            await DisplayAlert("Contacto agregado", aceptado
+                ? $"{email} ya te tenía en su lista: ahora pueden verse y escribirse."
+                : $"Se envió una invitación a {email}. Aparecerá como Desconectado hasta que te acepte.", "Aceptar");
+            return;
+        }
+
+        // Cuenta de prueba: contacto simulado.
         await Servicios.Db.GuardarContactoAsync(new Contacto
         {
             Propietario = u.Email,
@@ -322,12 +420,44 @@ public class ContactsPage : ContentPage
         await DisplayAlert("Contacto agregado", $"{email} se agregó a tu lista de contactos.", "Aceptar");
     }
 
+    /// <summary>Lo guarda de inmediato; la siguiente sincronización completa el resto.</summary>
+    static async Task GuardarContactoRealAsync(string propietario, string email, RespuestaApi r)
+    {
+        var c = await Servicios.Db.ContactoPorEmailAsync(propietario, email)
+                ?? new Contacto { Propietario = propietario, Email = email };
+        c.EsReal = true;
+        c.Estado = Estado.Desconectado;
+        c.Relacion = "pendiente";
+        if (string.IsNullOrEmpty(c.Nombre)) c.Nombre = email.Split('@')[0];
+        if (r.Datos.TryGetProperty("contacto", out var j) && j.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            if (j.TryGetProperty("nombre", out var n) && n.GetString() is { } nombre) c.Nombre = nombre;
+            if (j.TryGetProperty("relacion", out var rel) && rel.GetString() is { } relacion) c.Relacion = relacion;
+            if (j.TryGetProperty("estado", out var e) && e.TryGetInt32(out var est)) c.Estado = (Estado)est;
+        }
+        await Servicios.Db.GuardarContactoAsync(c);
+    }
+
+    async Task QuitarDemoAsync()
+    {
+        var u = Servicios.Usuario;
+        if (u is null) return;
+        if (!await DisplayAlert("Contactos de demostración",
+                "¿Quitar los contactos simulados y sus conversaciones? Tus contactos reales no se tocan.", "Quitar", "Cancelar"))
+            return;
+        await Servicios.Db.EliminarContactosDemoAsync(u.Email);
+        await RecargarAsync();
+    }
+
     async Task CerrarSesionAsync(bool confirmar)
     {
         if (confirmar && !await DisplayAlert("Cerrar sesión", "¿Quieres cerrar sesión?", "Cerrar sesión", "Cancelar"))
             return;
-        Servicios.Sim.PresenciaCambio -= OnPresencia;
-        Servicios.Sim.MensajeRecibido -= OnMensaje;
+        Eventos.PresenciaCambio -= OnPresencia;
+        Eventos.MensajeRecibido -= OnMensaje;
+        Eventos.ContactosCambiaron -= OnContactosCambiaron;
+        Eventos.InvitacionNueva -= OnInvitacion;
+        Eventos.SesionVencida -= OnSesionVencida;
 
         var u = Servicios.Usuario;
         if (u?.Token is { } token)
