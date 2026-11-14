@@ -27,6 +27,7 @@ public class Usuario
     public string? Token { get; set; }          // sesión del servidor (null = cuenta sólo local)
     public string? Avatar { get; set; }         // ruta del archivo en el teléfono
     public string? AvatarRemoto { get; set; }   // ruta en el servidor, p. ej. avatares/3fa9.jpg
+    public bool DemoSembrado { get; set; }      // ya se le crearon los contactos de demostración
 }
 
 [Table("contactos")]
@@ -40,6 +41,11 @@ public class Contacto
     public Estado Estado { get; set; } = Estado.Desconectado;
     public bool Bloqueado { get; set; }
     public string? Avatar { get; set; }         // ruta local; null = inicial de color
+    public string? AvatarRemoto { get; set; }   // ruta en el servidor (sólo contactos reales)
+    public bool EsReal { get; set; }            // false = contacto de demostración (simulado)
+    public string Relacion { get; set; } = "";  // reales: aceptado | pendiente | bloqueado
+
+    [Ignore] public bool Pendiente => EsReal && Relacion == "pendiente";
 }
 
 [Table("mensajes")]

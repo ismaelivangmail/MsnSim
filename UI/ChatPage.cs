@@ -66,6 +66,11 @@ public class ChatPage : ContentPage
         _entrada = new Entry { Placeholder = "Escribe un mensaje...", Keyboard = Keyboard.Chat, ReturnType = ReturnType.Send, FontSize = 15 };
         _entrada.Completed += async (_, _) => await EnviarAsync();
         _entrada.Focused += (_, _) => MostrarEmojis(false);
+        _entrada.TextChanged += (_, e) =>
+        {
+            if (_c.EsReal && !_c.Pendiente && !string.IsNullOrEmpty(e.NewTextValue))
+                Servicios.Sync.AvisarEscribiendo(_c.Email);
+        };
         var enviar = new Button
         {
             Text = "Enviar", BackgroundColor = Tema.Azul, TextColor = Colors.White,
@@ -136,7 +141,9 @@ public class ChatPage : ContentPage
     {
         _encPunto.Content = Tema.Punto(_c.Estado, 11);
         _encNombre.Text = Tema.Emoticones(_c.Nombre);
-        var estado = _c.Bloqueado ? "Bloqueado" : Tema.NombreEstado(_c.Estado);
+        var estado = _c.Bloqueado ? "Bloqueado"
+            : _c.Pendiente ? "Pendiente: todavía no acepta tu invitación"
+            : Tema.NombreEstado(_c.Estado);
         var personal = string.IsNullOrWhiteSpace(_c.MensajePersonal) ? "" : $"  –  {Tema.Emoticones(_c.MensajePersonal)}";
         _encDetalle.Text = estado + personal;
         _itemBloquear.Text = _c.Bloqueado ? "Desbloquear" : "Bloquear";
@@ -148,9 +155,10 @@ public class ChatPage : ContentPage
     {
         base.OnAppearing();
         Servicios.ChatAbierto = _c.Email;
-        Servicios.Sim.PresenciaCambio += OnPresencia;
-        Servicios.Sim.MensajeRecibido += OnMensaje;
-        Servicios.Sim.Escribiendo += OnEscribiendo;
+        Eventos.PresenciaCambio += OnPresencia;
+        Eventos.MensajeRecibido += OnMensaje;
+        Eventos.Escribiendo += OnEscribiendo;
+        Eventos.ContactosCambiaron += OnContactosCambiaron;
 
         var u = Servicios.Usuario;
         if (u is null) return;
@@ -168,9 +176,10 @@ public class ChatPage : ContentPage
     {
         base.OnDisappearing();
         if (Servicios.ChatAbierto == _c.Email) Servicios.ChatAbierto = null;
-        Servicios.Sim.PresenciaCambio -= OnPresencia;
-        Servicios.Sim.MensajeRecibido -= OnMensaje;
-        Servicios.Sim.Escribiendo -= OnEscribiendo;
+        Eventos.PresenciaCambio -= OnPresencia;
+        Eventos.MensajeRecibido -= OnMensaje;
+        Eventos.Escribiendo -= OnEscribiendo;
+        Eventos.ContactosCambiaron -= OnContactosCambiaron;
     }
 
     // ---------- Eventos del simulador ----------
@@ -186,6 +195,23 @@ public class ChatPage : ContentPage
         else if (!antes && ahora) Sistema($"{nombre} ha iniciado sesión.");
         else if (anterior != c.Estado) Sistema($"{nombre} ha cambiado su estado a {Tema.NombreEstado(c.Estado)}.");
         _ = BajarAsync();
+    }
+
+    async void OnContactosCambiaron()
+    {
+        var u = Servicios.Usuario;
+        if (u is null) return;
+        var actual = await Servicios.Db.ContactoPorEmailAsync(u.Email, _c.Email);
+        if (actual is null) return;   // lo quitaron; la pantalla sigue mostrando el historial
+        bool aceptoAhora = _c.Pendiente && !actual.Pendiente && !actual.Bloqueado;
+        _c = actual;
+        Title = Tema.Emoticones(_c.Nombre);
+        ActualizarEncabezado();
+        if (aceptoAhora)
+        {
+            Sistema($"{Tema.Emoticones(_c.Nombre)} aceptó tu invitación. Ya pueden escribirse.");
+            await BajarAsync();
+        }
     }
 
     async void OnMensaje(Mensaje m, Contacto c)
@@ -308,6 +334,15 @@ public class ChatPage : ContentPage
             Sistema($"Bloqueaste a {nombre}. Desbloquéalo para enviarle mensajes.");
             return false;
         }
+        if (_c.EsReal)
+        {
+            if (_c.Pendiente)
+            {
+                Sistema($"{nombre} todavía no acepta tu invitación. Podrán escribirse cuando te agregue.");
+                return false;
+            }
+            return true;   // si está desconectado, el servidor guarda el mensaje hasta que entre
+        }
         if (!Simulador.EstaEnLinea(_c))
         {
             Sistema(textoPendiente is null
@@ -317,6 +352,26 @@ public class ChatPage : ContentPage
         }
         return true;
     }
+
+    /// <summary>Envía al servidor (contactos reales). Devuelve false si no se pudo.</summary>
+    async Task<bool> EnviarRealAsync(string texto, bool zumbido)
+    {
+        var r = await Servicios.Sync.EnviarAsync(_c.Email, texto, zumbido);
+        if (!r.Ok)
+        {
+            Sistema(zumbido ? $"No se pudo enviar el zumbido: {r.Error}" : $"No se pudo enviar el mensaje: {r.Error}\n{texto}");
+            await BajarAsync();
+            return false;
+        }
+        if (!r.Booleano("en_linea") && !zumbido && !_avisoDesconectado)
+        {
+            _avisoDesconectado = true;
+            Sistema($"{Tema.Emoticones(_c.Nombre)} está desconectado. Recibirá tus mensajes cuando inicie sesión.");
+        }
+        return true;
+    }
+
+    bool _avisoDesconectado;
 
     async Task EnviarAsync()
     {
@@ -331,6 +386,12 @@ public class ChatPage : ContentPage
         }
 
         _entrada.Text = "";
+        if (_c.EsReal && !await EnviarRealAsync(texto, false))
+        {
+            _entrada.Text = texto;   // se queda para reintentar
+            return;
+        }
+
         var m = new Mensaje
         {
             Propietario = u.Email, Contacto = _c.Email, Enviado = true,
@@ -340,7 +401,7 @@ public class ChatPage : ContentPage
         Agregar(m);
         await BajarAsync();
         _entrada.Focus();
-        _ = Servicios.Sim.ResponderAsync(_c, texto);
+        if (!_c.EsReal) _ = Servicios.Sim.ResponderAsync(_c, texto);
     }
 
     async Task EnviarZumbidoAsync()
@@ -360,6 +421,7 @@ public class ChatPage : ContentPage
         }
 
         _ultimoZumbido = DateTime.Now;
+        if (_c.EsReal && !await EnviarRealAsync("", true)) return;
         var m = new Mensaje
         {
             Propietario = u.Email, Contacto = _c.Email, Enviado = true,
@@ -369,7 +431,7 @@ public class ChatPage : ContentPage
         Agregar(m);
         await BajarAsync();
         await SacudirAsync();
-        _ = Servicios.Sim.ZumbidoEnviadoAsync(_c);
+        if (!_c.EsReal) _ = Servicios.Sim.ZumbidoEnviadoAsync(_c);
     }
 
     // ---------- Panel de emojis ----------
@@ -450,6 +512,17 @@ public class ChatPage : ContentPage
 
     async Task AlternarBloqueoAsync()
     {
+        if (_c.EsReal)
+        {
+            var r = await Servicios.Sync.CambiarBloqueoAsync(_c.Email, !_c.Bloqueado);
+            if (!r.Ok)
+            {
+                await DisplayAlert("Bloquear", r.Error, "Aceptar");
+                return;
+            }
+            _c.Relacion = !_c.Bloqueado ? "bloqueado" : "aceptado";   // la sincronización lo confirma
+            if (!_c.Bloqueado) _c.Estado = Estado.Desconectado;
+        }
         _c.Bloqueado = !_c.Bloqueado;
         await Servicios.Db.GuardarContactoAsync(_c);
         ActualizarEncabezado();
@@ -477,6 +550,15 @@ public class ChatPage : ContentPage
     {
         if (!await DisplayAlert("Eliminar contacto", $"¿Eliminar a {_c.Nombre} ({_c.Email}) y su historial?", "Eliminar", "Cancelar"))
             return;
+        if (_c.EsReal)
+        {
+            var r = await Servicios.Sync.EliminarAsync(_c.Email);
+            if (!r.Ok)
+            {
+                await DisplayAlert("Eliminar contacto", r.Error, "Aceptar");
+                return;
+            }
+        }
         await Servicios.Db.EliminarContactoAsync(_c);
         await Navigation.PopAsync();
     }

@@ -8,6 +8,7 @@ public static class Servicios
 {
     public static Database Db { get; } = new(Path.Combine(FileSystem.AppDataDirectory, "msnsim.db3"));
     public static Simulador Sim { get; } = new(Db);
+    public static Sincronizador Sync { get; } = new(Db);
 
     public static Usuario? Usuario { get; private set; }
 
@@ -18,11 +19,13 @@ public static class Servicios
     {
         Usuario = u;
         Sim.Iniciar();
+        if (!string.IsNullOrEmpty(u.Token)) Sync.Iniciar();   // la cuenta de prueba no tiene servidor
     }
 
     public static void CerrarSesion()
     {
         Sim.Detener();
+        Sync.Detener();
         Usuario = null;
         ChatAbierto = null;
     }

@@ -6,7 +6,7 @@ namespace MsnSim.Services;
 /// Hace de "servidor": cambia la presencia de los contactos, responde mensajes
 /// y a veces inicia conversaciones. Todo corre en el hilo de UI (async/await),
 /// así que los eventos llegan ya en el hilo principal.
-/// Más adelante se puede sustituir por MsnClient.Core conectado a Escargot.
+/// Sólo actúa sobre los contactos de demostración (EsReal = false).
 /// </summary>
 public sealed class Simulador
 {
@@ -14,10 +14,6 @@ public sealed class Simulador
     readonly Random _r = new();
     readonly HashSet<string> _pendientes = new();
     CancellationTokenSource? _cts;
-
-    public event Action<Contacto, Estado>? PresenciaCambio;   // contacto actualizado, estado anterior
-    public event Action<Mensaje, Contacto>? MensajeRecibido;
-    public event Action<string, bool>? Escribiendo;           // email, sí/no
 
     public Simulador(Database db) => _db = db;
 
@@ -58,7 +54,8 @@ public sealed class Simulador
     {
         var u = Servicios.Usuario;
         if (u is null) return;
-        var contactos = await _db.ContactosAsync(u.Email);
+        // Sólo los contactos de demostración; los reales los maneja el Sincronizador.
+        var contactos = (await _db.ContactosAsync(u.Email)).Where(c => !c.EsReal).ToList();
         if (contactos.Count == 0) return;
         var c = contactos[_r.Next(contactos.Count)];
 
@@ -74,7 +71,7 @@ public sealed class Simulador
         c.Estado = SiguienteEstado(anterior);
         if (_r.NextDouble() < 0.25) c.MensajePersonal = Elegir(MensajesPersonales);
         await _db.GuardarContactoAsync(c);
-        if (!ct.IsCancellationRequested) PresenciaCambio?.Invoke(c, anterior);
+        if (!ct.IsCancellationRequested) Eventos.EmitirPresencia(c, anterior);
     }
 
     Estado SiguienteEstado(Estado actual)
@@ -127,9 +124,9 @@ public sealed class Simulador
 
     async Task EscribirYEntregarAsync(Contacto c, string texto, CancellationToken ct)
     {
-        Escribiendo?.Invoke(c.Email, true);
+        Eventos.EmitirEscribiendo(c.Email, true);
         try { await Task.Delay(Math.Clamp(texto.Length * 110, 1300, 5000), ct); }
-        finally { Escribiendo?.Invoke(c.Email, false); }
+        finally { Eventos.EmitirEscribiendo(c.Email, false); }
         await EntregarAsync(c, texto, false, ct);
     }
 
@@ -148,7 +145,7 @@ public sealed class Simulador
             Leido = Servicios.ChatAbierto == c.Email
         };
         await _db.GuardarMensajeAsync(m);
-        MensajeRecibido?.Invoke(m, c);
+        Eventos.EmitirMensaje(m, c);
     }
 
     // ---------- Frases ----------
